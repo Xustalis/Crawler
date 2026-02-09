@@ -173,7 +173,7 @@ class MainWindow(QMainWindow):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         # Compact height for single row
-        scroll.setMinimumHeight(100)  
+        scroll.setMinimumHeight(60)  
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         
         result_layout.addWidget(scroll)

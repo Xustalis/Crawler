@@ -1,5 +1,5 @@
 """
-Refactored UI widgets with fixed category design and resource inspection.
+Refactored UI widgets with COMPACT HORIZONTAL design.
 """
 
 from typing import List, Set, Optional, Dict
@@ -25,7 +25,7 @@ class ResourceDetailDialog(QDialog):
         self.setWindowTitle(title)
         self.resize(800, 600)
         self.resources = resources
-        self.selected_urls = set(selected_urls) # Copy to avoid modifying original until accepted
+        self.selected_urls = set(selected_urls)
         self._setup_ui()
         
     def _setup_ui(self):
@@ -49,14 +49,7 @@ class ResourceDetailDialog(QDialog):
         self.btn_all.clicked.connect(self._select_all)
         btn_layout.addWidget(self.btn_all)
         
-        self.btn_none = QPushButton("Deselect All") # Fallback text if key missing, but we added select_all
-        # We need a key for deselect all or reuse? Let's use hardcoded for now or add to i18n if strict.
-        # User requirement said "Select All / Deselect All".
-        self.btn_none.setText(t('select_all').replace("Select", "Deselect") if "Select" in t('select_all') else "Deselect All")
-        # Better: just "Clear" or "None". I'll use "Clear Selection" logic.
-        # Let's just use English fallback for safety if key logic is complex, but I'll try to find a key or just use "None".
-        # Checking i18n, I didn't add 'deselect_all'. I'll simply toggle all off.
-        self.btn_none.setText("None / 无") 
+        self.btn_none = QPushButton("None / 无") 
         self.btn_none.clicked.connect(self._select_none)
         btn_layout.addWidget(self.btn_none)
         
@@ -69,7 +62,6 @@ class ResourceDetailDialog(QDialog):
         
         layout.addLayout(btn_layout)
         
-        # Apply dark theme
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: white; }
             QTableWidget { background-color: #252526; color: white; border: 1px solid #333; gridline-color: #333; }
@@ -82,17 +74,13 @@ class ResourceDetailDialog(QDialog):
     def _populate_table(self):
         self.table.setRowCount(len(self.resources))
         for i, res in enumerate(self.resources):
-            # Checkbox
             item = QTableWidgetItem()
             item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
             is_checked = res.url in self.selected_urls
             item.setCheckState(Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
             self.table.setItem(i, 0, item)
-            
-            # Data
             self.table.setItem(i, 1, QTableWidgetItem(str(res.url)))
             self.table.setItem(i, 2, QTableWidgetItem(str(res.filename or "")))
-            
             size_mb = res.size / (1024 * 1024) if res.size else 0
             size_str = f"{size_mb:.2f} MB" if size_mb > 0 else "Unknown"
             self.table.setItem(i, 3, QTableWidgetItem(size_str))
@@ -115,7 +103,7 @@ class ResourceDetailDialog(QDialog):
 
 class CategoryCheckbox(QFrame):
     """
-    Refactored category checkbox with variable height and details button.
+    Refactored category checkbox: Horizontal, Compact, Fixed Height.
     """
     
     stateChanged = pyqtSignal(int)
@@ -125,18 +113,20 @@ class CategoryCheckbox(QFrame):
         super().__init__(parent)
         self.label_key = label_key
         self.setFrameStyle(QFrame.Shape.StyledPanel)
-        # Removed fixed minimum height to allow auto-sizing
-        # self.setMinimumHeight(70) 
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum) # Allow vertical shrinking
+        
+        # [修改] 强制高度 50px (非常紧凑，绝不会遮挡)
+        self.setFixedHeight(50)
+        # 水平扩展，垂直固定
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
         self.setStyleSheet("""
             CategoryCheckbox {
-                background-color: #333333;
-                border: 1px solid #555;
+                background-color: #2d2d2d;
+                border: 1px solid #444;
                 border-radius: 6px;
             }
             CategoryCheckbox:hover {
-                background-color: #404040;
+                background-color: #383838;
                 border: 1px solid #00a0ff;
             }
         """)
@@ -145,59 +135,61 @@ class CategoryCheckbox(QFrame):
         
     def _setup_ui(self, icon: str):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 4, 6, 4) # Further reduced padding
-        layout.setSpacing(6) # Further reduced spacing
+        # [修改] 上下边距很小 (2px)，左右适中 (8px)
+        layout.setContentsMargins(8, 2, 8, 2) 
+        # [修改] 元素间距适中
+        layout.setSpacing(8) 
         
         # Checkbox
         self.checkbox = QCheckBox()
         self.checkbox.setTristate(True)
         self.checkbox.setStyleSheet("""
-            QCheckBox::indicator { width: 18px; height: 18px; }
-            QCheckBox::indicator:unchecked { border: 2px solid #888; background: #2a2a2a; border-radius: 4px; }
-            QCheckBox::indicator:checked { border: 2px solid #00a0ff; background: #00a0ff; border-radius: 4px; }
-            QCheckBox::indicator:indeterminate { border: 2px solid #00a0ff; background: #2a2a2a; border-radius: 4px; }
+            QCheckBox::indicator { width: 16px; height: 16px; }
+            QCheckBox::indicator:unchecked { border: 2px solid #888; background: #2a2a2a; border-radius: 3px; }
+            QCheckBox::indicator:checked { border: 2px solid #00a0ff; background: #00a0ff; border-radius: 3px; }
+            QCheckBox::indicator:indeterminate { border: 2px solid #00a0ff; background: #2a2a2a; border-radius: 3px; }
         """)
         self.checkbox.stateChanged.connect(self.stateChanged.emit) 
         layout.addWidget(self.checkbox)
         
         # Icon
         icon_label = QLabel(icon)
-        icon_label.setFixedSize(28, 28) # Smaller icon container (was 32)
-        icon_label.setFont(QFont("Segoe UI Emoji", 18)) # Smaller font (was 20)
-        # Explicit color for icon in case it renders as monochome text
+        icon_label.setFixedSize(24, 24)
+        icon_label.setFont(QFont("Segoe UI Emoji", 16)) 
         icon_label.setStyleSheet("background: transparent; border: none; color: #ffffff;")
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(icon_label)
         
-        # Text Label (Flexible width)
+        # Text Label
         self.text_label = QLabel(t(self.label_key))
-        self.text_label.setFont(QFont("Microsoft YaHei", 11, QFont.Weight.Bold)) # Smaller font (was 12)
-        self.text_label.setStyleSheet("color: #ffffff; background: transparent; border: none;") # Pure white
-        self.text_label.setWordWrap(True)
+        # 字体稍微调小一点，防止换行
+        self.text_label.setFont(QFont("Microsoft YaHei", 10, QFont.Weight.Bold))
+        self.text_label.setStyleSheet("color: #e0e0e0; background: transparent; border: none;")
         layout.addWidget(self.text_label, stretch=1)
         
         # Count Label
         self.count_label = QLabel("(0)")
-        self.count_label.setFont(QFont("Microsoft YaHei", 10)) # (was 11)
-        self.count_label.setStyleSheet("color: #aaaaaa; background: transparent; border: none;") # Lighter gray
+        self.count_label.setFont(QFont("Microsoft YaHei", 10))
+        self.count_label.setStyleSheet("color: #888; background: transparent; border: none;")
         layout.addWidget(self.count_label)
         
-        # Details Button
+        # Details Button (Compact)
         self.details_btn = QPushButton(t('btn_details'))
         self.details_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.details_btn.clicked.connect(self.detailsRequested.emit)
         self.details_btn.setStyleSheet("""
             QPushButton {
-                background-color: #333;
-                color: #ccc;
+                background-color: #444;
+                color: #ddd;
                 border: 1px solid #555;
-                padding: 4px 8px;
-                border-radius: 4px;
+                padding: 2px 8px; /* 紧凑内边距 */
+                border-radius: 3px;
                 font-size: 11px;
-                min-width: 50px;
+                min-width: 40px;
+                height: 24px;
             }
             QPushButton:hover {
-                background-color: #444;
+                background-color: #555;
                 color: white;
                 border-color: #00a0ff;
             }
@@ -255,11 +247,16 @@ class CategoryPanel(QWidget):
         self._setup_ui()
     
     def _setup_ui(self):
-        layout = QHBoxLayout(self) # Switched to Horizontal
-        layout.setSpacing(10) 
-        layout.setContentsMargins(2, 2, 2, 2) # Minimal margins
+        # [重点] 恢复为横向布局 QHBoxLayout
+        layout = QHBoxLayout(self)
         
-        # CRITICAL: Set size policy for the panel itself
+        # [修改] 减少卡片之间的间距，防止在小屏幕上挤出屏幕
+        layout.setSpacing(10)
+        
+        # [修改] 设置非常小的上下边距，把高度让给下面的组件
+        layout.setContentsMargins(0, 5, 0, 10)
+        
+        # 设置 SizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         
         # Create checkboxes
@@ -281,8 +278,6 @@ class CategoryPanel(QWidget):
         layout.addWidget(self.image_cb)
         layout.addWidget(self.video_cb)
         layout.addWidget(self.text_cb)
-        
-        # layout.addStretch() # remove stretch to let them fill or use policy
 
     def update_texts(self):
         """Update language for all children."""
@@ -294,20 +289,15 @@ class CategoryPanel(QWidget):
         """Initialize with new data."""
         self.scraped_data = data
         
-        # Helper to get all URLs for a list of resources
         def get_urls(r_list: List[Resource]) -> Set[str]:
             return {r.url for r in r_list if r.url}
             
-        # Default: Select ALL
         self.selected_resources['images'] = get_urls(data.images)
-        
         all_videos = data.videos + data.m3u8_streams
         self.selected_resources['videos'] = get_urls(all_videos)
-        
         all_docs = data.documents + data.audios
         self.selected_resources['documents'] = get_urls(all_docs)
         
-        # Update UI
         self._refresh_checkbox('images', len(data.images))
         self._refresh_checkbox('videos', len(all_videos))
         self._refresh_checkbox('documents', len(all_docs))
@@ -317,16 +307,12 @@ class CategoryPanel(QWidget):
         cb = self._get_cb(key)
         selected_count = len(self.selected_resources[key])
         
-        # Update count label: "(5)" or "(3/5)"
         if selected_count == total_count:
             cb.set_count(total_count)
         else:
             cb.set_count(selected_count, str(total_count))
             
-        # Update check state
-        # Block signals to prevent feedback loop
         cb.checkbox.blockSignals(True)
-        
         if total_count == 0:
             cb.set_check_state(Qt.CheckState.Unchecked)
             cb.setEnabled(False) 
@@ -336,7 +322,6 @@ class CategoryPanel(QWidget):
             cb.set_check_state(Qt.CheckState.Checked)
         else:
             cb.set_check_state(Qt.CheckState.PartiallyChecked)
-            
         cb.checkbox.blockSignals(False)
 
     def _get_cb(self, key: str) -> CategoryCheckbox:
@@ -357,31 +342,16 @@ class CategoryPanel(QWidget):
         resources = self._get_resources_list(key)
         all_urls = {r.url for r in resources}
         
-        # User Interaction Logic:
-        # If PartiallyChecked or Checked -> Uncheck All
-        # If Unchecked -> Check All
-        
-        # Note: state is the NEW state after click.
-        # But QCheckBox tristate cycling is: Unchecked -> Partial -> Checked -> Unchecked
-        # We want to force binary toggle for the main checkbox click
-        
         new_selection = set()
-        
         if state == Qt.CheckState.Unchecked.value:
-            # User unchecked it
             new_selection = set()
         elif state == Qt.CheckState.Checked.value:
-            # User checked it
             new_selection = all_urls
         elif state == Qt.CheckState.PartiallyChecked.value:
-            # User somehow got to partial (cycling), treat as Checked (Select All)
             new_selection = all_urls
         
         self.selected_resources[key] = new_selection
-        
-        # Refresh UI to snap to correct state (fixing Partial if it was user-cycled)
         self._refresh_checkbox(key, len(resources))
-        
         self.selection_changed.emit()
 
     def _show_details(self, key: str):
@@ -389,7 +359,6 @@ class CategoryPanel(QWidget):
         resources = self._get_resources_list(key)
         if not resources: return
         
-        # Get translated title
         title_map = {
             'images': t('cat_images'),
             'videos': t('cat_videos'),
@@ -405,7 +374,6 @@ class CategoryPanel(QWidget):
         )
         
         if dlg.exec():
-            # User confirmed
             self.selected_resources[key] = dlg.get_selected_urls()
             self._refresh_checkbox(key, len(resources))
             self.selection_changed.emit()
