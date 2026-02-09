@@ -19,6 +19,8 @@ class ResourceType(Enum):
     M3U8 = "m3u8"
     AUDIO = "audio"
     UNKNOWN = "unknown"
+    JSON_DATA = "json_data"      # API/JSON responses
+    RICH_TEXT = "rich_text"      # Markdown/HTML fragments
 
 
 class DownloadStatus(Enum):
@@ -68,6 +70,9 @@ class Resource:
     # Metadata
     created_at: datetime = field(default_factory=datetime.now)
     local_path: Optional[str] = None
+    
+    content: str = ""                                    # Raw text/JSON content
+    metadata: dict = field(default_factory=dict)         # Author, date, tags, etc.
     
     def __post_init__(self) -> None:
         """Validate and auto-infer missing fields."""
@@ -170,4 +175,6 @@ class Resource:
             'progress': self.progress,
             'error': self.error_message,
             'local_path': self.local_path,
+            'content': self.content,
+            'metadata': self.metadata,
         }
