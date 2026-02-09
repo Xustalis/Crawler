@@ -52,7 +52,7 @@ def main() -> int:
         # Create application
         app = QApplication(sys.argv)
         app.setApplicationName("Crawler")
-        app.setApplicationVersion("1.0.0")
+        app.setApplicationVersion("2.0.0")
         app.setOrganizationName("OpenSource")
         
         # Apply stylesheet

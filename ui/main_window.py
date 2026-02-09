@@ -48,13 +48,31 @@ class MainWindow(QMainWindow):
         self.retranslateUi()
     
     def _setup_ui(self) -> None:
-        """Initialize UI."""
-        self.setWindowTitle("Crawler")
-        self.setMinimumSize(850, 700)
+        """Initialize UI with Tabs."""
+        self.setWindowTitle("Crawler V2.0")
+        self.setMinimumSize(900, 750)
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background-color: #1e1e1e;
                 color: #ffffff;
+            }
+            QTabWidget::pane {
+                border: 1px solid #444;
+                background: #1e1e1e;
+            }
+            QTabBar::tab {
+                background: #2d2d2d;
+                color: #888;
+                padding: 10px 20px;
+                border: 1px solid #444;
+                border-bottom: none;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background: #1e1e1e;
+                color: #00a0ff;
+                border-bottom: 2px solid #00a0ff;
             }
             QGroupBox {
                 font-size: 14px;
@@ -109,15 +127,24 @@ class MainWindow(QMainWindow):
             }
         """)
         
-        central = QWidget()
-        self.setCentralWidget(central)
-        main_layout = QVBoxLayout(central)
-        main_layout.setSpacing(20)
-        main_layout.setContentsMargins(30, 20, 30, 20)
+        # Tabs
+        from PyQt6.QtWidgets import QTabWidget
+        from ui.history_widget import HistoryWidget
+        
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
+        
+        # --- Tab 1: New Task ---
+        self.tab_new = QWidget()
+        self.tabs.addTab(self.tab_new, "New Task")
+        
+        main_layout = QVBoxLayout(self.tab_new)
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
         
         # Header
         self.header_label = QLabel()
-        self.header_label.setFont(QFont("Microsoft YaHei", 22, QFont.Weight.Bold))
+        self.header_label.setFont(QFont("Microsoft YaHei", 20, QFont.Weight.Bold))
         self.header_label.setStyleSheet("color: #00a0ff;")
         self.header_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.header_label)
@@ -137,12 +164,12 @@ class MainWindow(QMainWindow):
         self.url_group.setLayout(url_layout)
         main_layout.addWidget(self.url_group)
         
-        # Step 1.5: Concurrency Control
-        self.concurrency_group = QGroupBox("Concurrency") # Will be translated
+        # Step 1.5: Concurrency
+        self.concurrency_group = QGroupBox()
         concurrency_layout = QHBoxLayout()
         
         self.concurrency_label = QLabel(f"Workers: {self.num_workers}")
-        self.concurrency_label.setStyleSheet("font-size: 12px;") # Reduced from 14px
+        self.concurrency_label.setStyleSheet("font-size: 12px;") 
         concurrency_layout.addWidget(self.concurrency_label)
         
         self.concurrency_slider = QSlider(Qt.Orientation.Horizontal)
@@ -160,19 +187,15 @@ class MainWindow(QMainWindow):
         self.result_group = QGroupBox()
         result_layout = QVBoxLayout()
         
-        # Create category panel
         self.category_panel = CategoryPanel()
         self.category_panel.selection_changed.connect(self._update_download_state)
         
-        # CRITICAL: Wrap in scroll area to prevent compression
         scroll = QScrollArea()
         scroll.setWidget(self.category_panel)
         scroll.setWidgetResizable(True)
-        # Enable horizontal scrolling, disable vertical
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        # Compact height for single row
         scroll.setMinimumHeight(60)  
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
         
@@ -204,7 +227,6 @@ class MainWindow(QMainWindow):
         
         result_layout.addLayout(btn_layout)
         self.result_group.setLayout(result_layout)
-        # Don't use stretch - let the group size naturally based on content
         main_layout.addWidget(self.result_group)
         
         # Progress
@@ -226,6 +248,15 @@ class MainWindow(QMainWindow):
         log_layout.addWidget(self.log_widget)
         self.log_group.setLayout(log_layout)
         main_layout.addWidget(self.log_group)
+        
+        # --- Tab 2: History ---
+        self.tab_history = HistoryWidget()
+        self.tabs.addTab(self.tab_history, "History")
+        self.tabs.currentChanged.connect(self._on_tab_changed)
+
+    def _on_tab_changed(self, index):
+        if index == 1: # History tab
+            self.tab_history.load_history()
     
     def _create_menu(self) -> None:
         """Create menu bar with language switcher."""

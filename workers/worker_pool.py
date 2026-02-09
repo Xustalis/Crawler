@@ -90,7 +90,7 @@ class WorkerPool(QObject):
         stats = self.crawl_queue.get_stats()
         self.pool_progress.emit(stats['completed'], stats['total_queued'])
     
-    def _on_task_completed(self, url: str, resources: List[Resource], links: List[str]):
+    def _on_task_completed(self, url: str, resources: List[Resource], links: List[str], depth: int):
         """
         Handle task completion - aggregate results and queue new links.
         
@@ -98,6 +98,7 @@ class WorkerPool(QObject):
             url: Completed URL
             resources: Extracted resources
             links: Discovered links
+            depth: depth of the completed task
         """
         # Categorize resources
         for res in resources:
@@ -122,9 +123,10 @@ class WorkerPool(QObject):
         # In full implementation, we'd pass original task's depth
         # For this MVP, we'll just queue up to max_depth=2
         for link in links:
-            # Simplified: queue all links as depth 2
-            next_task = CrawlTask(url=link, depth=2, priority=Priority.NORMAL, referer=url)
-            if self.max_depth >= 2:
+            # BFS: If current depth < max_depth, queue new links with depth + 1
+            if depth < self.max_depth:
+                next_depth = depth + 1
+                next_task = CrawlTask(url=link, depth=next_depth, priority=Priority.NORMAL, referer=url)
                 self.crawl_queue.put(next_task)
         
         # Update progress

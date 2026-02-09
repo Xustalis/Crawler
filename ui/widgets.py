@@ -1,20 +1,59 @@
 """
-Refactored UI widgets with COMPACT HORIZONTAL design.
+Refactored UI widgets with COMPACT HORIZONTAL design and GRID VIEW support.
 """
 
 from typing import List, Set, Optional, Dict
+import requests
+from io import BytesIO
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, 
     QLabel, QFrame, QPushButton, QDialog, QTableWidget,
-    QTableWidgetItem, QHeaderView, QAbstractItemView, QTextEdit, QSizePolicy
+    QTableWidgetItem, QHeaderView, QAbstractItemView, 
+    QTextEdit, QSizePolicy, QStackedWidget, QListWidget, 
+    QListWidgetItem
 )
-from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont, QCursor, QTextCursor
+from PyQt6.QtCore import pyqtSignal, Qt, QThread, QSize, QObject
+from PyQt6.QtGui import QFont, QCursor, QTextCursor, QIcon, QPixmap
 
 from core.scraped_data import ScrapedData, ResourceCategory
-from core.models import Resource
+from core.models import Resource, ResourceType
 from ui.i18n import t
+
+class ThumbnailLoader(QObject):
+    """
+    Worker to load thumbnails in background.
+    """
+    thumbnail_loaded = pyqtSignal(str, QPixmap) # url, pixmap
+
+    def __init__(self, urls: List[str]):
+        super().__init__()
+        self.urls = urls
+        self.running = True
+
+    def run(self):
+        for url in self.urls:
+            if not self.running: break
+            try:
+                # Simple fetch
+                response = requests.get(url, timeout=5)
+                if response.status_code == 200:
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(BytesIO(response.content).read())
+                    if not pixmap.isNull():
+                        # Scale down
+                        pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        self.thumbnail_loaded.emit(url, pixmap)
+            except:
+                pass
+
+class ThumbnailWorker(QThread):
+    def __init__(self, loader):
+        super().__init__()
+        self.loader = loader
+        
+    def run(self):
+        self.loader.run()
 
 class ResourceDetailDialog(QDialog):
     """
@@ -26,30 +65,63 @@ class ResourceDetailDialog(QDialog):
         self.resize(800, 600)
         self.resources = resources
         self.selected_urls = set(selected_urls)
+        
+        # Check if we should show grid view (only for images)
+        self.is_image_category = any(r.resource_type == ResourceType.IMAGE for r in resources)
+        
+        self.thumbnail_thread = None
         self._setup_ui()
         
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        main_layout = QVBoxLayout(self)
         
-        # Table
+        # Top Bar
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(QLabel(t('details_title', ""))) # Just "Details" prefix
+        top_layout.addStretch()
+        
+        if self.is_image_category:
+            self.view_btn = QPushButton(t('view_grid'))
+            self.view_btn.setCheckable(True)
+            self.view_btn.clicked.connect(self._toggle_view)
+            top_layout.addWidget(self.view_btn)
+            
+        main_layout.addLayout(top_layout)
+        
+        # Stacked Widget for List vs Grid
+        self.stack = QStackedWidget()
+        
+        # 1. Table View
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["", t('col_url'), t('col_filename'), t('col_size')])
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
-        
         self._populate_table()
-        layout.addWidget(self.table)
+        self.stack.addWidget(self.table)
         
-        # Buttons
+        # 2. Grid View
+        if self.is_image_category:
+            self.list_widget = QListWidget()
+            self.list_widget.setViewMode(QListWidget.ViewMode.IconMode)
+            self.list_widget.setIconSize(QSize(100, 100))
+            self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
+            self.list_widget.setSpacing(10)
+            self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+            self._populate_grid()
+            self.list_widget.itemSelectionChanged.connect(self._sync_selection_from_grid)
+            self.stack.addWidget(self.list_widget)
+            
+        main_layout.addWidget(self.stack)
+        
+        # Bottom Buttons
         btn_layout = QHBoxLayout()
-        
         self.btn_all = QPushButton(t('select_all'))
         self.btn_all.clicked.connect(self._select_all)
         btn_layout.addWidget(self.btn_all)
         
-        self.btn_none = QPushButton("None / 无") 
+        self.btn_none = QPushButton("None") 
         self.btn_none.clicked.connect(self._select_none)
         btn_layout.addWidget(self.btn_none)
         
@@ -60,15 +132,15 @@ class ResourceDetailDialog(QDialog):
         self.btn_confirm.setStyleSheet("background-color: #007acc; color: white; padding: 6px 15px; border-radius: 4px; font-weight: bold;")
         btn_layout.addWidget(self.btn_confirm)
         
-        layout.addLayout(btn_layout)
+        main_layout.addLayout(btn_layout)
         
         self.setStyleSheet("""
             QDialog { background-color: #1e1e1e; color: white; }
-            QTableWidget { background-color: #252526; color: white; border: 1px solid #333; gridline-color: #333; }
+            QTableWidget, QListWidget { background-color: #252526; color: white; border: 1px solid #333; }
             QHeaderView::section { background-color: #333; color: white; padding: 4px; border: none; }
-            QTableWidgetItem { padding: 5px; }
             QPushButton { background-color: #333; color: white; border: 1px solid #555; padding: 6px 12px; border-radius: 4px; }
             QPushButton:hover { background-color: #444; border-color: #00a0ff; }
+            QPushButton:checked { background-color: #00a0ff; border-color: #00a0ff; }
         """)
 
     def _populate_table(self):
@@ -85,20 +157,116 @@ class ResourceDetailDialog(QDialog):
             size_str = f"{size_mb:.2f} MB" if size_mb > 0 else "Unknown"
             self.table.setItem(i, 3, QTableWidgetItem(size_str))
             
+        # Connect signal after population
+        self.table.itemChanged.connect(self._on_table_item_changed)
+
+    def _populate_grid(self):
+        for res in self.resources:
+            item = QListWidgetItem(res.title or "Image")
+            item.setData(Qt.ItemDataRole.UserRole, res.url)
+            # Default icon
+            item.setIcon(QIcon(":/icons/image.png")) # Placeholder if we had one
+            self.list_widget.addItem(item)
+            if res.url in self.selected_urls:
+                item.setSelected(True)
+        
+        # Trigger lazy load
+        self._start_lazy_load()
+
+    def _start_lazy_load(self):
+        urls = [r.url for r in self.resources if r.resource_type == ResourceType.IMAGE]
+        self.loader = ThumbnailLoader(urls)
+        self.loader.thumbnail_loaded.connect(self._on_thumbnail_loaded)
+        self.thumbnail_thread = ThumbnailWorker(self.loader)
+        self.thumbnail_thread.start()
+
+    def _on_thumbnail_loaded(self, url, pixmap):
+        # Find item with this url
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == url:
+                item.setIcon(QIcon(pixmap))
+                break
+
+    def _toggle_view(self, checked):
+        if checked:
+            self.stack.setCurrentIndex(1)
+            self.view_btn.setText(t('view_list'))
+        else:
+            self.stack.setCurrentIndex(0)
+            self.view_btn.setText(t('view_grid'))
+
+    def _on_table_item_changed(self, item):
+        if item.column() == 0:
+            row = item.row()
+            url = self.resources[row].url
+            if item.checkState() == Qt.CheckState.Checked:
+                self.selected_urls.add(url)
+                if self.is_image_category:
+                     self._set_grid_selection(url, True)
+            else:
+                self.selected_urls.discard(url)
+                if self.is_image_category:
+                     self._set_grid_selection(url, False)
+
+    def _set_grid_selection(self, url, selected):
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == url:
+                item.setSelected(selected)
+                break
+
+    def _sync_selection_from_grid(self):
+        # Sync grid selection back to set and table
+        # This is a bit complex because QListWidget gives us explicit selection list
+        selected_items = self.list_widget.selectedItems()
+        selected_urls = {item.data(Qt.ItemDataRole.UserRole) for item in selected_items}
+        
+        self.selected_urls = selected_urls
+        
+        # Update table checks without triggering signals (block)
+        self.table.blockSignals(True)
+        for i in range(self.table.rowCount()):
+             res = self.resources[i]
+             item = self.table.item(i, 0)
+             item.setCheckState(Qt.CheckState.Checked if res.url in self.selected_urls else Qt.CheckState.Unchecked)
+        self.table.blockSignals(False)
+
     def _select_all(self):
-        for i in range(self.table.rowCount()):
-            self.table.item(i, 0).setCheckState(Qt.CheckState.Checked)
-            
+        self.selected_urls = {r.url for r in self.resources}
+        self._update_all_views()
+
     def _select_none(self):
+        self.selected_urls.clear()
+        self._update_all_views()
+
+    def _update_all_views(self):
+        # Update Table
+        self.table.blockSignals(True)
         for i in range(self.table.rowCount()):
-            self.table.item(i, 0).setCheckState(Qt.CheckState.Unchecked)
+            res = self.resources[i]
+            checked = res.url in self.selected_urls
+            self.table.item(i, 0).setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        self.table.blockSignals(False)
+        
+        # Update Grid
+        if self.is_image_category:
+            self.list_widget.blockSignals(True)
+            for i in range(self.list_widget.count()):
+                item = self.list_widget.item(i)
+                url = item.data(Qt.ItemDataRole.UserRole)
+                item.setSelected(url in self.selected_urls)
+            self.list_widget.blockSignals(False)
             
     def get_selected_urls(self) -> Set[str]:
-        selected = set()
-        for i in range(self.table.rowCount()):
-            if self.table.item(i, 0).checkState() == Qt.CheckState.Checked:
-                selected.add(self.resources[i].url)
-        return selected
+        return self.selected_urls
+
+    def closeEvent(self, event):
+        if self.thumbnail_thread:
+            self.loader.running = False
+            self.thumbnail_thread.quit()
+            self.thumbnail_thread.wait()
+        super().closeEvent(event)
 
 
 class CategoryCheckbox(QFrame):
@@ -114,7 +282,6 @@ class CategoryCheckbox(QFrame):
         self.label_key = label_key
         self.setFrameStyle(QFrame.Shape.StyledPanel)
         self.setFixedHeight(50)
-        # 水平扩展，垂直固定
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
         self.setStyleSheet("""
@@ -133,9 +300,7 @@ class CategoryCheckbox(QFrame):
         
     def _setup_ui(self, icon: str):
         layout = QHBoxLayout(self)
-        # [修改] 上下边距很小 (2px)，左右适中 (8px)
         layout.setContentsMargins(8, 2, 8, 2) 
-        # [修改] 元素间距适中
         layout.setSpacing(8) 
         
         # Checkbox
@@ -160,7 +325,6 @@ class CategoryCheckbox(QFrame):
         
         # Text Label
         self.text_label = QLabel(t(self.label_key))
-        # 字体稍微调小一点，防止换行
         self.text_label.setFont(QFont("Microsoft YaHei", 10, QFont.Weight.Bold))
         self.text_label.setStyleSheet("color: #e0e0e0; background: transparent; border: none;")
         layout.addWidget(self.text_label, stretch=1)
@@ -245,16 +409,9 @@ class CategoryPanel(QWidget):
         self._setup_ui()
     
     def _setup_ui(self):
-        # [重点] 恢复为横向布局 QHBoxLayout
         layout = QHBoxLayout(self)
-        
-        # [修改] 减少卡片之间的间距，防止在小屏幕上挤出屏幕
         layout.setSpacing(10)
-        
-        # [修改] 设置非常小的上下边距，把高度让给下面的组件
         layout.setContentsMargins(0, 5, 0, 10)
-        
-        # 设置 SizePolicy
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         
         # Create checkboxes

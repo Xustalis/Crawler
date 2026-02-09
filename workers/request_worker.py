@@ -30,7 +30,7 @@ class RequestWorker(QThread):
     
     # Signals
     task_started = pyqtSignal(str)  # url
-    task_completed = pyqtSignal(str, list, list)  # url, resources, links
+    task_completed = pyqtSignal(str, list, list, int)  # url, resources, links, depth
     task_failed = pyqtSignal(str, str)  # url, error
     log_message = pyqtSignal(str)
     
@@ -78,7 +78,7 @@ class RequestWorker(QThread):
                 resources, links = self.parser.parse(task.url)
                 
                 # Success
-                self.task_completed.emit(task.url, resources, links)
+                self.task_completed.emit(task.url, resources, links, task.depth)
                 self.crawl_queue.task_done(success=True)
                 
                 logger.debug(f"Worker {self.worker_id}: Parsed {task.url} - {len(resources)} resources, {len(links)} links")

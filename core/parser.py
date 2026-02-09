@@ -114,6 +114,12 @@ class PageParser:
         
         return resources, pagination_links
     
+    def extract_links(self, soup: BeautifulSoup, base_url: str) -> List[str]:
+        """
+        Public API for extracting navigation links (Pagination + Depth).
+        """
+        return self.get_pagination_links(soup, base_url)
+    
     def _extract_main_content(self, soup: BeautifulSoup) -> BeautifulSoup:
         """
         Extract main content area using heuristic scoring.
