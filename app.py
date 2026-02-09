@@ -22,6 +22,7 @@ Version: 1.0.0
 """
 
 import sys
+import traceback
 from pathlib import Path
 
 from PyQt6.QtWidgets import QApplication
@@ -36,6 +37,36 @@ from utils.logger import setup_logger
 logger = setup_logger('Crawler')
 
 
+class CrashHandler:
+    """Global exception handler to ensure stability."""
+    @staticmethod
+    def install():
+        sys.excepthook = CrashHandler.handle_exception
+
+    @staticmethod
+    def handle_exception(exc_type, exc_value, exc_traceback):
+        """Handle uncaught exceptions."""
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+
+        error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        logger.critical(f"Uncaught exception:\n{error_msg}")
+        
+        # Show error dialog if QApplication is active
+        app = QApplication.instance()
+        if app:
+            from PyQt6.QtWidgets import QMessageBox
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Icon.Critical)
+            msg.setText("Application Crashed")
+            msg.setInformativeText("An unexpected error occurred. Logs have been saved.")
+            msg.setDetailedText(error_msg)
+            msg.setWindowTitle("Critical Error")
+            msg.exec()
+
+
+
 def main() -> int:
     """
     Application entry point.
@@ -48,6 +79,9 @@ def main() -> int:
         QApplication.setHighDpiScaleFactorRoundingPolicy(
             Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
         )
+        
+        # Install global exception handler
+        CrashHandler.install()
         
         # Create application
         app = QApplication(sys.argv)

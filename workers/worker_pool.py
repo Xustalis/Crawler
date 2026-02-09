@@ -49,6 +49,7 @@ class WorkerPool(QObject):
         # Queue and workers
         self.crawl_queue = CrawlQueue()
         self.workers: List[RequestWorker] = []
+        self.threads: List[QThread] = [] # Keep track of threads
         
         # Results aggregation
         self.scraped_data: Optional[ScrapedData] = None
@@ -69,18 +70,38 @@ class WorkerPool(QObject):
         self.crawl_queue.put(seed_task)
         
         # Create and start workers
+        from PyQt6.QtCore import QThread
+        
         for i in range(self.num_workers):
-            worker = RequestWorker(worker_id=i, crawl_queue=self.crawl_queue)
+            # 1. Create Thread
+            thread = QThread()
+            self.threads.append(thread)
             
-            # Connect signals
+            # 2. Create Worker (QObject)
+            worker = RequestWorker(worker_id=i, crawl_queue=self.crawl_queue)
+            self.workers.append(worker)
+            
+            # 3. Move to Thread
+            worker.moveToThread(thread)
+            
+            # 4. Connect Signals
+            thread.started.connect(worker.process_queue)
+            
             worker.task_started.connect(self._on_task_started)
             worker.task_completed.connect(self._on_task_completed)
             worker.task_failed.connect(self._on_task_failed)
             worker.log_message.connect(self.log_message.emit)
-            worker.finished.connect(lambda: self._on_worker_finished())
             
-            self.workers.append(worker)
-            worker.start()
+            # Handle Cleanup/Finish
+            worker.finished.connect(thread.quit)
+            worker.finished.connect(worker.deleteLater)
+            thread.finished.connect(thread.deleteLater)
+            
+            # Track overall progress (using thread finish or worker signal)
+            thread.finished.connect(lambda: self._on_worker_finished())
+            
+            # 5. Start Thread
+            thread.start()
         
         self.pool_started.emit()
         self.log_message.emit(f"Started {self.num_workers} workers for {seed_url}")
@@ -146,7 +167,8 @@ class WorkerPool(QObject):
     def _on_worker_finished(self):
         """Check if all workers are done."""
         # Check if all workers have finished
-        all_done = all(worker.isFinished() for worker in self.workers)
+        # Check if all threads have finished
+        all_done = all(thread.isFinished() for thread in self.threads)
         
         if all_done:
             stats = self.crawl_queue.get_stats()
@@ -176,9 +198,12 @@ class WorkerPool(QObject):
         """Cancel all workers."""
         self.log_message.emit("Cancelling worker pool...")
         
+        # Stop workers
         for worker in self.workers:
-            worker.cancel()
+            worker.stop()
         
-        # Wait for workers to finish (with timeout)
-        for worker in self.workers:
-            worker.wait(2000)  # 2 second timeout
+        # Quit threads
+        for thread in self.threads:
+            if thread.isRunning():
+                thread.quit()
+                thread.wait(2000)

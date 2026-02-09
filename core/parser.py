@@ -35,6 +35,7 @@ class PageParser:
     4. Pagination discovery
     """
     
+    
     def __init__(self, timeout: int = 10):
         """
         Initialize parser with NetworkManager.
@@ -42,7 +43,7 @@ class PageParser:
         Args:
             timeout: Request timeout in seconds
         """
-        self.network = NetworkManager(timeout=timeout)
+        self.network = NetworkManager()
     
     def parse(self, url: str) -> tuple[List[Resource], List[str]]:
         """

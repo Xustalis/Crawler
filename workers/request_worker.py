@@ -1,97 +1,88 @@
 """
-Individual worker thread for concurrent crawling.
-
-Each worker pulls tasks from the shared queue, fetches pages,
-parses content, and emits results via signals.
+Refactored Worker using QObject + QThread pattern for better signal handling and stability.
 """
 
 import time
 import random
 from typing import Optional
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from core.crawl_queue import CrawlTask
 from core.parser import PageParser
-from core.models import Resource
 from utils.logger import setup_logger
-
 
 logger = setup_logger(__name__)
 
 
-class RequestWorker(QThread):
+class RequestWorker(QObject):
     """
-    Worker thread that processes crawl tasks from queue.
-    
-    Each worker maintains its own Session for connection pooling
-    and adds random delays to avoid overwhelming servers.
+    Worker object that processes crawl tasks.
+    Designed to be moved to a QThread.
     """
     
     # Signals
-    task_started = pyqtSignal(str)  # url
-    task_completed = pyqtSignal(str, list, list, int)  # url, resources, links, depth
-    task_failed = pyqtSignal(str, str)  # url, error
+    task_started = pyqtSignal(str)
+    task_completed = pyqtSignal(str, list, list, int)
+    task_failed = pyqtSignal(str, str)
     log_message = pyqtSignal(str)
+    finished = pyqtSignal() # Emitted when loop ends
     
-    def __init__(self, worker_id: int, crawl_queue, parent=None):
-        """
-        Initialize worker.
-        
-        Args:
-            worker_id: Unique worker identifier
-            crawl_queue: Shared CrawlQueue instance
-            parent: Parent QObject
-        """
-        super().__init__(parent)
-        
+    def __init__(self, worker_id: int, crawl_queue):
+        super().__init__()
         self.worker_id = worker_id
         self.crawl_queue = crawl_queue
-        self._is_cancelled = False
-        
-        # Each worker has its own parser (with its own Session)
-        self.parser = PageParser()
+        self._is_running = True
+        self.parser = PageParser()  # Uses NetworkManager internally
     
-    def run(self) -> None:
-        """Main worker loop - pulls tasks and processes them."""
-        self.log_message.emit(f"Worker {self.worker_id} started")
+    @pyqtSlot()
+    def process_queue(self):
+        """Main processing loop."""
+        self.log_message.emit(f"Worker {self.worker_id} started (Async)")
         
-        while not self._is_cancelled:
-            # Get task from queue (block for 1 second)
-            task: Optional[CrawlTask] = self.crawl_queue.get(block=True, timeout=1.0)
-            
-            if task is None:
-                # Timeout - check if queue is empty
-                if self.crawl_queue.is_empty():
-                    break  # No more work
-                continue
-            
-            # Process task
+        while self._is_running:
             try:
-                self.task_started.emit(task.url)
+                # Use a smaller timeout to check for cancellation frequently
+                task: Optional[CrawlTask] = self.crawl_queue.get(block=True, timeout=0.5)
                 
-                # Random delay (0.1-0.5s) to avoid hammering server
-                delay = random.uniform(0.1, 0.5)
-                time.sleep(delay)
+                if task is None:
+                    # Timeout
+                    if self.crawl_queue.is_empty() and not self._is_running:
+                        break
+                    continue
                 
-                # Parse page
-                resources, links = self.parser.parse(task.url)
-                
-                # Success
-                self.task_completed.emit(task.url, resources, links, task.depth)
-                self.crawl_queue.task_done(success=True)
-                
-                logger.debug(f"Worker {self.worker_id}: Parsed {task.url} - {len(resources)} resources, {len(links)} links")
+                self._process_task(task)
                 
             except Exception as e:
-                error_msg = f"Worker {self.worker_id} failed on {task.url}: {str(e)}"
-                logger.error(error_msg, exc_info=True)
+                # Catch queue errors
+                pass
                 
-                self.task_failed.emit(task.url, str(e))
-                self.crawl_queue.task_done(success=False)
-        
         self.log_message.emit(f"Worker {self.worker_id} stopped")
-    
-    def cancel(self):
-        """Request worker to stop."""
-        self._is_cancelled = True
+        self.finished.emit()
+
+    def _process_task(self, task: CrawlTask):
+        try:
+            self.task_started.emit(task.url)
+            
+            # Random delay
+            delay = random.uniform(0.1, 0.5)
+            time.sleep(delay)
+            
+            # Parse using robust parser
+            resources, links = self.parser.parse(task.url)
+            
+            # Success
+            self.task_completed.emit(task.url, resources, links, task.depth)
+            self.crawl_queue.task_done(success=True)
+            
+            logger.debug(f"Worker {self.worker_id}: Parsed {task.url}")
+            
+        except Exception as e:
+            logger.error(f"Worker {self.worker_id} failed: {e}", exc_info=True)
+            self.task_failed.emit(task.url, str(e))
+            self.crawl_queue.task_done(success=False)
+
+    def stop(self):
+        """Signal worker to stop."""
+        self._is_running = False
+
