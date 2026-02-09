@@ -182,14 +182,13 @@ def get_stylesheet() -> str:
         color: #e0e0e0;
         border: 1px solid #3f3f46;
         border-radius: 4px;
-        margin-top: 12px;
-        font-weight: bold;
-        padding-top: 10px;
+        margin-top: 6px; /* Further reduced */
+        padding-top: 4px; /* Further reduced */
     }
     
     QGroupBox::title {
         subcontrol-origin: margin;
-        left: 10px;
-        padding: 0 5px;
+        left: 5px; /* Reduced */
+        padding: 0 3px; /* Reduced */
     }
     """

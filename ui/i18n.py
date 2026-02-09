@@ -46,6 +46,16 @@ class I18n:
             'zh': '🔍 分析'
         },
         
+        # Concurrency Section
+        'concurrency_title': {
+            'en': 'Concurrency Settings',
+            'zh': '并发设置'
+        },
+        'concurrency_label': {
+            'en': 'Workers: {0}',
+            'zh': '线程数：{0}'
+        },
+        
         # Resource List
         'resources_title': {
             'en': '📦 Discovered Resources',
@@ -224,6 +234,44 @@ class I18n:
             'zh': '选择输出目录'
         },
         
+        # Resource Details Dialog
+        'details_title': {
+            'en': 'Resource Details - {0}',
+            'zh': '资源详情 - {0}'
+        },
+        'col_url': {
+            'en': 'URL',
+            'zh': '链接'
+        },
+        'col_filename': {
+            'en': 'File Name',
+            'zh': '文件名'
+        },
+        'col_size': {
+            'en': 'Size',
+            'zh': '大小'
+        },
+        'btn_details': {
+            'en': 'Details',
+            'zh': '详情'
+        },
+        'btn_confirm': {
+            'en': 'Confirm',
+            'zh': '确定'
+        },
+        'cat_images': {
+            'en': 'Images',
+            'zh': '图片资源'
+        },
+        'cat_videos': {
+            'en': 'Videos',
+            'zh': '视频资源'
+        },
+        'cat_documents': {
+            'en': 'Documents',
+            'zh': '文档资源'
+        },
+
         # Language menu
         'menu_language': {
             'en': 'Language',

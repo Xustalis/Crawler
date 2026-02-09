@@ -1,6 +1,10 @@
-"""Worker threads for the Crawler application."""
+"""
+Workers module - Thread-based workers for crawling and downloading.
+"""
 
-from .signals import CrawlerSignals
-from .crawler_worker import CrawlerWorker
+from .worker_pool import WorkerPool
+from .request_worker import RequestWorker
+from .analyzer_worker import AnalyzerWorker
+from .downloader_worker import DownloaderWorker
 
-__all__ = ['CrawlerSignals', 'CrawlerWorker']
+__all__ = ['WorkerPool', 'RequestWorker', 'AnalyzerWorker', 'DownloaderWorker']

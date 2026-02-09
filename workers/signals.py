@@ -22,7 +22,7 @@ class CrawlerSignals(QObject):
     analysis_started = pyqtSignal()  # Emitted when URL analysis begins
     analysis_progress = pyqtSignal(str)  # Emitted with status message
     resources_found = pyqtSignal(list)  # Emitted with List[Resource]
-    analysis_completed = pyqtSignal()  # Emitted when analysis finishes
+    analysis_completed = pyqtSignal(object)  # Emitted with ScrapedData when analysis finishes
     
     # Download phase signals
     download_started = pyqtSignal(Resource)  # Emitted when downloading a resource

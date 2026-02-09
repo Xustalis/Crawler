@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from enum import Enum, auto
 
+from .models import Resource
+
 
 class ResourceCategory(Enum):
     """Categories of web resources that can be scraped."""
@@ -24,23 +26,20 @@ class ScrapedData:
     """
     Aggregated scraping results by resource category.
     
-    Instead of exposing raw URLs to users, this class provides
-    summary counts and category-based access for a cleaner UX.
-    
     Attributes:
-        images: List of discovered image URLs
-        videos: List of discovered video URLs
-        audios: List of discovered audio URLs
-        documents: List of discovered document URLs
-        m3u8_streams: List of discovered M3U8 playlist URLs
+        images: List of discovered image Resources
+        videos: List of discovered video Resources
+        audios: List of discovered audio Resources
+        documents: List of discovered document Resources (includes JSON/Text)
+        m3u8_streams: List of discovered M3U8 Resources
         source_url: The original URL that was scraped
     """
     
-    images: List[str] = field(default_factory=list)
-    videos: List[str] = field(default_factory=list)
-    audios: List[str] = field(default_factory=list)
-    documents: List[str] = field(default_factory=list)
-    m3u8_streams: List[str] = field(default_factory=list)
+    images: List[Resource] = field(default_factory=list)
+    videos: List[Resource] = field(default_factory=list)
+    audios: List[Resource] = field(default_factory=list)
+    documents: List[Resource] = field(default_factory=list)
+    m3u8_streams: List[Resource] = field(default_factory=list)
     source_url: str = ""
     
     def is_empty(self) -> bool:
@@ -78,15 +77,15 @@ class ScrapedData:
             ResourceCategory.M3U8_STREAMS: len(self.m3u8_streams),
         }
     
-    def get_urls_by_category(self, category: ResourceCategory) -> List[str]:
+    def get_resources_by_category(self, category: ResourceCategory) -> List[Resource]:
         """
-        Get URL list for a specific category.
+        Get Resource list for a specific category.
         
         Args:
             category: The resource category
         
         Returns:
-            List of URLs for that category
+            List of Resource objects
         """
         mapping = {
             ResourceCategory.IMAGES: self.images,
@@ -96,6 +95,13 @@ class ScrapedData:
             ResourceCategory.M3U8_STREAMS: self.m3u8_streams,
         }
         return mapping.get(category, [])
+        
+    def get_urls_by_category(self, category: ResourceCategory) -> List[str]:
+        """
+        Get URL list for a specific category (Backward Compatibility).
+        """
+        resources = self.get_resources_by_category(category)
+        return [r.url for r in resources if r.url]
     
     def summary(self) -> str:
         """

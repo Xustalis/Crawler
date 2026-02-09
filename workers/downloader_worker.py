@@ -75,14 +75,16 @@ class DownloaderWorker(QThread):
         try:
             self.signals.started.emit()
             
-            # 收集所有待下载的 URL
-            urls_to_download: List[str] = []
+            # 收集所有待下载的资源
+            from core.models import Resource
+            resources_to_download: List[Resource] = []
+            
             for category in self.selected_categories:
-                urls_to_download.extend(
-                    self.scraped_data.get_urls_by_category(category)
+                resources_to_download.extend(
+                    self.scraped_data.get_resources_by_category(category)
                 )
             
-            total = len(urls_to_download)
+            total = len(resources_to_download)
             if total == 0:
                 self.signals.log.emit("⚠️ 没有可下载的资源")
                 self.signals.finished.emit(0, 0)
@@ -95,7 +97,7 @@ class DownloaderWorker(QThread):
             
             # 下载每个文件
             success_count = 0
-            for i, url in enumerate(urls_to_download):
+            for i, resource in enumerate(resources_to_download):
                 if self._is_cancelled:
                     break
                 
@@ -104,9 +106,9 @@ class DownloaderWorker(QThread):
                     self.msleep(100)
                 
                 # 下载单个文件
-                if self._download_file(url):
+                if self._download_file(resource):
                     success_count += 1
-                    self.signals.file_completed.emit(url)
+                    self.signals.file_completed.emit(resource.url)
                 
                 # 更新整体进度
                 self.signals.overall_progress.emit(i + 1, total)
@@ -123,16 +125,43 @@ class DownloaderWorker(QThread):
             logger.exception("Downloader worker error")
             self.signals.log.emit(f"❌ 下载出错: {str(e)}")
     
-    def _download_file(self, url: str) -> bool:
+    def _download_file(self, resource) -> bool:
         """
-        Download a single file.
+        Download a single resource.
         
+        Args:
+            resource: Resource object
+            
         Returns:
             True if successful, False otherwise
         """
+        url = resource.url
         try:
+            # 1. 如果有 content，直接保存 (Text/JSON)
+            if resource.content:
+                filename = f"{resource.title}{resource.file_extension}"
+                filename = sanitize_filename(filename)
+                filepath = Path(self.output_dir) / filename
+                filepath = self._get_unique_path(filepath)
+                
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(resource.content)
+                
+                self.signals.file_progress.emit(url, 1.0)
+                return True
+            
+            # 2. 常规下载
             # 获取文件名
             filename = self._extract_filename(url)
+            # 如果 Resource 有标题且不是默认的，优先使用标题作为文件名
+            if resource.title and len(resource.title) > 0 and "Page Content" not in resource.title: # basic check
+                 # ensure extension
+                 ext = resource.file_extension or os.path.splitext(filename)[1]
+                 if not ext:
+                     ext = os.path.splitext(filename)[1]
+                 filename = f"{resource.title}{ext}"
+            
+            filename = sanitize_filename(filename)
             filepath = Path(self.output_dir) / filename
             
             # 避免覆盖同名文件

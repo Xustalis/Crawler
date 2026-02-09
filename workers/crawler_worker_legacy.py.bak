@@ -40,7 +40,8 @@ class CrawlerWorker(QThread):
         self,
         url: str,
         resources_to_download: List[Resource] = None,
-        output_dir: str = './downloads'
+        output_dir: str = './downloads',
+        max_depth: int = 2
     ):
         """
         Initialize worker thread.
@@ -49,12 +50,14 @@ class CrawlerWorker(QThread):
             url: URL to crawl (for analysis phase)
             resources_to_download: List of resources to download (for download phase)
             output_dir: Output directory for downloads
+            max_depth: Maximum crawl depth (BFS)
         """
         super().__init__()
         
         self.url = url
         self.resources_to_download = resources_to_download or []
         self.output_dir = output_dir
+        self.max_depth = max_depth
         
         # Signals
         self.signals = CrawlerSignals()
@@ -94,25 +97,73 @@ class CrawlerWorker(QThread):
             self.signals.error_occurred.emit(error_msg)
     
     def _run_analysis(self) -> None:
-        """Execute URL analysis phase."""
+        """Execute URL analysis phase with BFS crawling."""
         self.signals.analysis_started.emit()
-        self.signals.log_message.emit(f"Analyzing URL: {self.url}")
+        self.signals.log_message.emit(f"Starting crawl from: {self.url} (Depth: {self.max_depth})")
         
         try:
-            # Parse URL
-            resources = self.parser.parse(self.url)
+            from collections import deque
+            from core.scraped_data import ScrapedData
+            from core.models import ResourceType
             
-            if self._is_cancelled:
-                return
+            queue = deque([(self.url, 1)])
+            visited = {self.url}
+            scraped_data = ScrapedData(source_url=self.url)
             
-            # Emit results
-            self.signals.resources_found.emit(resources)
-            self.signals.log_message.emit(f"Found {len(resources)} resources")
-            self.signals.analysis_completed.emit()
+            # Helper to categorize resource
+            def categorize(res):
+                if res.resource_type == ResourceType.IMAGE:
+                    scraped_data.images.append(res)
+                elif res.resource_type == ResourceType.VIDEO:
+                    scraped_data.videos.append(res)
+                elif res.resource_type == ResourceType.AUDIO:
+                    scraped_data.audios.append(res)
+                elif res.resource_type == ResourceType.M3U8:
+                    scraped_data.m3u8_streams.append(res)
+                elif res.resource_type in (ResourceType.TEXT, ResourceType.JSON_DATA, ResourceType.RICH_TEXT):
+                    scraped_data.documents.append(res)
+                else:
+                    # Fallback
+                    if res.file_extension in {'.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt'}:
+                        scraped_data.documents.append(res)
+
+            while queue and not self._is_cancelled:
+                current_url, depth = queue.popleft()
+                
+                self.signals.log_message.emit(f"Analyzing [{depth}/{self.max_depth}]: {current_url}")
+                
+                # Parse page
+                resources, links = self.parser.parse(current_url)
+                
+                if resources:
+                    count = 0
+                    for res in resources:
+                        # Simple deduplication by URL if needed, but ScrapedData allows duplicates?
+                        # It's better to dedup.
+                        # For now, we rely on the parser's per-page dedup, but cross-page dedup is hard here efficiently 
+                        # without a global set. 
+                        # Let's just append. ScrapedData is a dataclass.
+                        categorize(res)
+                        count += 1
+                    
+                    self.signals.log_message.emit(f"Found {count} resources on {current_url}")
+                    # Optional: emit batch if UI wants real-time updates
+                    # self.signals.resources_found.emit(resources)
+                
+                # Handle pagination if within depth limit
+                if depth < self.max_depth:
+                    for link in links:
+                        if link not in visited:
+                            visited.add(link)
+                            queue.append((link, depth + 1))
+                            logger.debug(f"Added to queue: {link}")
+            
+            self.signals.log_message.emit(f"Analysis complete. Total resources: {scraped_data.total_count()}")
+            self.signals.analysis_completed.emit(scraped_data)
             
         except Exception as e:
             error_msg = f"Analysis failed: {str(e)}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             self.signals.error_occurred.emit(error_msg)
     
     def _run_downloads(self) -> None:
