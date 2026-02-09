@@ -1,10 +1,8 @@
 """
-Main window for the Crawler application.
-
-Implements the primary UI with proper MVC separation and signal-slot connections.
+Refactored Main Window with language switcher and fixed category panel.
 """
 
-from pathlib import Path
+from typing import Optional
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -12,418 +10,370 @@ from PyQt6.QtWidgets import (
     QGroupBox, QMessageBox, QFileDialog, QMenuBar, QMenu
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QFont
 
-from core.models import Resource
-from workers.crawler_worker import CrawlerWorker
-from ui.widgets import ResourceListWidget, LogWidget
+from core.scraped_data import ScrapedData
+from workers.analyzer_worker import AnalyzerWorker
+from workers.downloader_worker import DownloaderWorker
+from ui.widgets import CategoryPanel, LogWidget
 from ui.i18n import get_i18n, t
 from utils.ffmpeg_checker import check_ffmpeg
 from utils.logger import setup_logger
-
 
 logger = setup_logger(__name__)
 
 
 class MainWindow(QMainWindow):
-    """
-    Main application window.
-    
-    Responsibilities:
-    - Manage UI layout
-    - Connect signals from worker threads
-    - Handle user interactions
-    - Display progress and logs
-    
-    CRITICAL: All worker signals must be connected in the UI thread!
-    """
+    """Main application window with language switcher."""
     
     def __init__(self):
         super().__init__()
-        self.worker = None
+        self.analyzer: Optional[AnalyzerWorker] = None
+        self.downloader: Optional[DownloaderWorker] = None
+        self.scraped_data: Optional[ScrapedData] = None
         self.output_dir = './downloads'
         self.i18n = get_i18n()
+        
         self._setup_ui()
         self._create_menu()
         self._check_environment()
     
     def _setup_ui(self) -> None:
-        """Initialize UI components and layout."""
-        self.setWindowTitle(t('app_title'))
-        self.setMinimumSize(900, 700)
+        """Initialize UI."""
+        self.setWindowTitle("Crawler - Web Resource Scraper")
+        self.setMinimumSize(850, 650)
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+            QGroupBox {
+                font-size: 14px;
+                font-weight: bold;
+                border: 1px solid #444;
+                border-radius: 8px;
+                margin-top: 12px;
+                padding-top: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 15px;
+                padding: 0 8px;
+                color: #00a0ff;
+            }
+            QLineEdit {
+                background-color: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 6px;
+                padding: 10px;
+                font-size: 14px;
+                color: #ffffff;
+            }
+            QLineEdit:focus {
+                border-color: #00a0ff;
+            }
+            QPushButton {
+                background-color: #007acc;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 10px 20px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0098ff;
+            }
+            QPushButton:disabled {
+                background-color: #444;
+                color: #888;
+            }
+            QProgressBar {
+                background-color: #2a2a2a;
+                border: none;
+                border-radius: 4px;
+                height: 8px;
+            }
+            QProgressBar::chunk {
+                background-color: #00a0ff;
+                border-radius: 4px;
+            }
+        """)
         
-        # Central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QVBoxLayout(central)
+        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(30, 20, 30, 20)
         
         # Header
-        self.header = QLabel(t('header_title'))
-        self.header.setStyleSheet("font-size: 20px; font-weight: bold; color: #00a0ff;")
-        main_layout.addWidget(self.header)
+        header = QLabel("🌐 Web Resource Crawler")
+        header.setFont(QFont("Microsoft YaHei", 22, QFont.Weight.Bold))
+        header.setStyleSheet("color: #00a0ff;")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(header)
         
-        # URL input section
-        url_group = self._create_url_section()
-        main_layout.addWidget(url_group)
-        
-        # Resource list
-        self.resource_list = ResourceListWidget()
-        main_layout.addWidget(self.resource_list, stretch=2)
-        
-        # Download controls
-        download_group = self._create_download_section()
-        main_layout.addWidget(download_group)
-        
-        # Progress section
-        progress_group = self._create_progress_section()
-        main_layout.addWidget(progress_group)
-        
-        # Log widget
-        self.log_label = QLabel(t('log_title'))
-        self.log_label.setStyleSheet("font-weight: bold;")
-        main_layout.addWidget(self.log_label)
-        
-        self.log_widget = LogWidget()
-        main_layout.addWidget(self.log_widget)
-        
-        # Status bar
-        self.statusBar().showMessage(t('status_ready'))
-    
-    def _create_url_section(self) -> QGroupBox:
-        """Create URL input section."""
-        self.url_group = QGroupBox(t('url_section_title'))
-        layout = QHBoxLayout()
+        # Step 1: URL Input
+        url_group = QGroupBox("第一步：输入网址")
+        url_layout = QHBoxLayout()
         
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText(t('url_placeholder'))
-        self.url_input.returnPressed.connect(self._on_analyze_clicked)
-        layout.addWidget(self.url_input, stretch=1)
+        self.url_input.setPlaceholderText("例如: baidu.com (自动补全 https://)")
+        self.url_input.returnPressed.connect(self._start_analysis)
+        url_layout.addWidget(self.url_input, stretch=1)
         
-        self.analyze_btn = QPushButton(t('analyze_button'))
-        self.analyze_btn.clicked.connect(self._on_analyze_clicked)
-        layout.addWidget(self.analyze_btn)
+        self.analyze_btn = QPushButton("🚀 开始分析")
+        self.analyze_btn.clicked.connect(self._start_analysis)
+        url_layout.addWidget(self.analyze_btn)
         
-        self.url_group.setLayout(layout)
-        return self.url_group
-    
-    def _create_download_section(self) -> QGroupBox:
-        """Create download controls section."""
-        self.download_group = QGroupBox(t('download_section_title'))
-        layout = QHBoxLayout()
+        url_group.setLayout(url_layout)
+        main_layout.addWidget(url_group)
         
-        self.download_btn = QPushButton(t('download_button'))
+        # Step 2: Resource Selection (Fixed 3 categories)
+        result_group = QGroupBox("第二步：选择资源类别")
+        result_layout = QVBoxLayout()
+        
+        self.category_panel = CategoryPanel()
+        self.category_panel.selection_changed.connect(self._update_download_state)
+        result_layout.addWidget(self.category_panel)
+        
+        # Action buttons
+        btn_layout = QHBoxLayout()
+        
+        self.output_btn = QPushButton(f"📁 保存到: {self.output_dir}")
+        self.output_btn.setStyleSheet("background-color: #444;")
+        self.output_btn.clicked.connect(self._choose_directory)
+        btn_layout.addWidget(self.output_btn)
+        
+        self.download_btn = QPushButton("⬇️ 下载选中资源")
         self.download_btn.setEnabled(False)
-        self.download_btn.clicked.connect(self._on_download_clicked)
-        layout.addWidget(self.download_btn)
+        self.download_btn.setStyleSheet("""
+            QPushButton { background-color: #28a745; }
+            QPushButton:hover { background-color: #34ce57; }
+            QPushButton:disabled { background-color: #444; color: #888; }
+        """)
+        self.download_btn.clicked.connect(self._start_download)
+        btn_layout.addWidget(self.download_btn, stretch=1)
         
-        self.pause_btn = QPushButton(t('pause_button'))
-        self.pause_btn.setObjectName("secondaryButton")
-        self.pause_btn.setEnabled(False)
-        self.pause_btn.clicked.connect(self._on_pause_clicked)
-        layout.addWidget(self.pause_btn)
-        
-        self.cancel_btn = QPushButton(t('cancel_button'))
-        self.cancel_btn.setObjectName("secondaryButton")
+        self.cancel_btn = QPushButton("⏹️ 取消")
         self.cancel_btn.setEnabled(False)
-        self.cancel_btn.clicked.connect(self._on_cancel_clicked)
-        layout.addWidget(self.cancel_btn)
+        self.cancel_btn.setStyleSheet("background-color: #dc3545;")
+        self.cancel_btn.clicked.connect(self._cancel_task)
+        btn_layout.addWidget(self.cancel_btn)
         
-        self.choose_dir_btn = QPushButton(t('choose_dir_button'))
-        self.choose_dir_btn.setObjectName("secondaryButton")
-        self.choose_dir_btn.clicked.connect(self._on_choose_directory)
-        layout.addWidget(self.choose_dir_btn)
+        result_layout.addLayout(btn_layout)
+        result_group.setLayout(result_layout)
+        main_layout.addWidget(result_group, stretch=1)
         
-        layout.addStretch()
-        
-        self.download_group.setLayout(layout)
-        return self.download_group
-    
-    def _create_progress_section(self) -> QGroupBox:
-        """Create progress display section."""
-        self.progress_group = QGroupBox(t('progress_title'))
-        layout = QVBoxLayout()
-        
-        # Overall progress
-        progress_layout = QHBoxLayout()
-        self.progress_label = QLabel(t('progress_ready'))
-        progress_layout.addWidget(self.progress_label)
+        # Progress
+        progress_layout = QVBoxLayout()
+        self.status_label = QLabel("就绪")
+        self.status_label.setStyleSheet("color: #888;")
+        progress_layout.addWidget(self.status_label)
         
         self.progress_bar = QProgressBar()
-        self.progress_bar.setMaximum(100)
-        progress_layout.addWidget(self.progress_bar, stretch=1)
+        self.progress_bar.setTextVisible(False)
+        progress_layout.addWidget(self.progress_bar)
         
-        layout.addLayout(progress_layout)
+        main_layout.addLayout(progress_layout)
         
-        self.progress_group.setLayout(layout)
-        return self.progress_group
+        # Log
+        self.log_widget = LogWidget()
+        main_layout.addWidget(self.log_widget)
     
     def _create_menu(self) -> None:
         """Create menu bar with language switcher."""
         menubar = self.menuBar()
+        menubar.setStyleSheet("""
+            QMenuBar {
+                background-color: #2a2a2a;
+                color: #ffffff;
+                padding: 5px;
+            }
+            QMenuBar::item:selected {
+                background-color: #444;
+            }
+            QMenu {
+                background-color: #2a2a2a;
+                color: #ffffff;
+                border: 1px solid #444;
+            }
+            QMenu::item:selected {
+                background-color: #007acc;
+            }
+        """)
         
         # Language menu
-        lang_menu = menubar.addMenu(t('menu_language'))
+        lang_menu = menubar.addMenu("🌐 语言 / Language")
         
-        # Chinese action
-        zh_action = QAction('中文', self)
+        zh_action = QAction("中文", self)
         zh_action.triggered.connect(lambda: self._change_language('zh'))
         lang_menu.addAction(zh_action)
         
-        # English action
-        en_action = QAction('English', self)
+        en_action = QAction("English", self)
         en_action.triggered.connect(lambda: self._change_language('en'))
         lang_menu.addAction(en_action)
     
     def _change_language(self, lang: str) -> None:
-        """Change application language."""
+        """Change language."""
         self.i18n.set_language(lang)
         self._update_ui_texts()
-        logger.info(f"Language changed to: {lang}")
+        self.log_widget.append_log(f"✓ 语言已切换: {lang.upper()}")
     
     def _update_ui_texts(self) -> None:
-        """Update all UI texts with current language."""
-        # Window title
-        self.setWindowTitle(t('app_title'))
-        
-        # Header
-        self.header.setText(t('header_title'))
-        
-        # URL section
-        self.url_group.setTitle(t('url_section_title'))
-        self.url_input.setPlaceholderText(t('url_placeholder'))
-        self.analyze_btn.setText(t('analyze_button'))
-        
-        # Download section
-        self.download_group.setTitle(t('download_section_title'))
-        self.download_btn.setText(t('download_button'))
-        current_pause_text = self.pause_btn.text()
-        if '▶️' in current_pause_text:
-            self.pause_btn.setText(t('resume_button'))
-        else:
-            self.pause_btn.setText(t('pause_button'))
-        self.cancel_btn.setText(t('cancel_button'))
-        self.choose_dir_btn.setText(t('choose_dir_button'))
-        
-        # Progress section
-        self.progress_group.setTitle(t('progress_title'))
-        
-        # Log section
-        self.log_label.setText(t('log_title'))
-        
-        # Update resource list
-        self.resource_list.update_language()
+        """Update UI texts for current language."""
+        # Simplified - just update key labels
+        is_zh = self.i18n.current_language == 'zh'
+        self.analyze_btn.setText("🚀 开始分析" if is_zh else "🚀 Analyze")
+        self.download_btn.setText("⬇️ 下载选中资源" if is_zh else "⬇️ Download")
+        self.cancel_btn.setText("⏹️ 取消" if is_zh else "⏹️ Cancel")
     
     def _check_environment(self) -> None:
-        """Check FFmpeg availability on startup."""
-        available, message = check_ffmpeg()
-        
+        """Check FFmpeg."""
+        available, msg = check_ffmpeg()
         if available:
-            self.log_widget.append_log(t('log_ffmpeg_detected', message))
+            self.log_widget.append_log(f"✓ FFmpeg: {msg}")
         else:
-            self.log_widget.append_log(t('log_ffmpeg_warning', message))
-            self.log_widget.append_log(t('log_ffmpeg_required'))
+            self.log_widget.append_log(f"⚠ FFmpeg: {msg}")
     
-    # Button handlers
+    # --- Analysis ---
     
-    def _on_analyze_clicked(self) -> None:
-        """Handle Analyze button click."""
+    def _start_analysis(self) -> None:
+        """Start analyzing URL."""
         url = self.url_input.text().strip()
-        
         if not url:
-            QMessageBox.warning(self, t('dialog_input_error'), t('dialog_enter_url'))
             return
         
-        if not url.startswith(('http://', 'https://')):
-            QMessageBox.warning(self, t('dialog_input_error'), t('dialog_invalid_url'))
-            return
-        
-        self._start_analysis(url)
-    
-    def _on_download_clicked(self) -> None:
-        """Handle Download button click."""
-        selected = self.resource_list.get_selected_resources()
-        
-        if not selected:
-            QMessageBox.warning(self, t('dialog_selection_error'), t('dialog_select_resources'))
-            return
-        
-        self._start_download(selected)
-    
-    def _on_pause_clicked(self) -> None:
-        """Handle Pause/Resume button click."""
-        if self.worker and self.worker.is_running_task():
-            if t('pause_button') in self.pause_btn.text() or '⏸' in self.pause_btn.text():
-                self.worker.pause()
-                self.pause_btn.setText(t('resume_button'))
-            else:
-                self.worker.resume()
-                self.pause_btn.setText(t('pause_button'))
-    
-    def _on_cancel_clicked(self) -> None:
-        """Handle Cancel button click."""
-        if self.worker:
-            self.worker.cancel()
-            self.cancel_btn.setEnabled(False)
-    
-    def _on_choose_directory(self) -> None:
-        """Handle directory selection."""
-        directory = QFileDialog.getExistingDirectory(
-            self,
-            t('dialog_select_output_dir'),
-            self.output_dir
-        )
-        
-        if directory:
-            self.output_dir = directory
-            self.log_widget.append_log(t('log_output_dir', directory))
-    
-    # Worker management
-    
-    def _start_analysis(self, url: str) -> None:
-        """Start URL analysis worker."""
-        # Clean up previous worker
-        if self.worker:
-            self.worker.quit()
-            self.worker.wait()
-        
-        # Create new worker
-        self.worker = CrawlerWorker(url=url, output_dir=self.output_dir)
-        self._connect_signals()
-        
-        # Update UI state
         self.analyze_btn.setEnabled(False)
+        self.url_input.setEnabled(False)
         self.download_btn.setEnabled(False)
-        self.progress_bar.setValue(0)
-        self.resource_list.set_resources([])
+        self.progress_bar.setRange(0, 0)
+        self.log_widget.clear_log()
         
-        # Start worker
-        self.worker.start()
-        logger.info(f"Started analysis worker for: {url}")
+        self.analyzer = AnalyzerWorker(url)
+        self.analyzer.signals.log.connect(self.log_widget.append_log)
+        self.analyzer.signals.progress.connect(self.status_label.setText)
+        self.analyzer.signals.error.connect(self._on_analysis_error)
+        self.analyzer.signals.finished.connect(self._on_analysis_done)
+        self.analyzer.start()
     
-    def _start_download(self, resources: list) -> None:
-        """Start download worker."""
-        # Clean up previous worker
-        if self.worker:
-            self.worker.quit()
-            self.worker.wait()
+    def _on_analysis_done(self, data: ScrapedData) -> None:
+        """Handle analysis completion."""
+        self.scraped_data = data
+        self.analyze_btn.setEnabled(True)
+        self.url_input.setEnabled(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.status_label.setText("分析完成")
         
-        # Create new worker
-        self.worker = CrawlerWorker(
-            url="",
-            resources_to_download=resources,
-            output_dir=self.output_dir
-        )
-        self._connect_signals()
-        
-        # Update UI state
-        self.download_btn.setEnabled(False)
-        self.pause_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(True)
-        self.progress_bar.setValue(0)
-        
-        # Start worker
-        self.worker.start()
-        logger.info(f"Started download worker for {len(resources)} resources")
+        self.category_panel.display_results(data)
+        self._update_download_state()
+        self.analyzer = None
     
-    def _connect_signals(self) -> None:
-        """Connect worker signals to UI slots."""
-        if not self.worker:
+    def _on_analysis_error(self, error: str) -> None:
+        """Handle error."""
+        self.analyze_btn.setEnabled(True)
+        self.url_input.setEnabled(True)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.status_label.setText("分析失败")
+        self.log_widget.append_log(f"✗ {error}")
+        
+        # 友好的错误提示
+        if "403" in error:
+            QMessageBox.warning(self, "访问被拒绝", 
+                "该网站拒绝了请求（403 Forbidden）。\n\n"
+                "可能原因：\n"
+                "• 网站有反爬虫保护\n"
+                "• 需要登录才能访问\n"
+                "• IP 被临时封禁")
+        elif "timeout" in error.lower() or "超时" in error:
+            QMessageBox.warning(self, "连接超时", "网络连接超时，请检查网络或稍后重试。")
+        else:
+            QMessageBox.warning(self, "分析失败", error)
+        
+        self.analyzer = None
+    
+    # --- Download ---
+    
+    def _start_download(self) -> None:
+        """Start batch download."""
+        if not self.scraped_data:
             return
         
-        signals = self.worker.signals
+        selected = self.category_panel.get_selected_categories()
+        if not selected:
+            return
         
-        # Analysis signals
-        signals.analysis_started.connect(self._on_analysis_started)
-        signals.resources_found.connect(self._on_resources_found)
-        signals.analysis_completed.connect(self._on_analysis_completed)
+        self.download_btn.setEnabled(False)
+        self.analyze_btn.setEnabled(False)
+        self.cancel_btn.setEnabled(True)
+        self.category_panel.setEnabled(False)
+        self.progress_bar.setValue(0)
         
-        # Download signals
-        signals.download_started.connect(self._on_download_started)
-        signals.download_progress.connect(self._on_download_progress)
-        signals.download_completed.connect(self._on_download_completed)
-        signals.download_failed.connect(self._on_download_failed)
-        
-        # Overall progress
-        signals.overall_progress.connect(self._on_overall_progress)
-        
-        # Logging
-        signals.log_message.connect(self.log_widget.append_log)
-        
-        # Errors
-        signals.error_occurred.connect(self._on_error)
-        
-        # Completion
-        signals.task_finished.connect(self._on_task_finished)
-    
-    # Signal handlers (slots)
-    
-    def _on_analysis_started(self) -> None:
-        """Handle analysis start."""
-        self.progress_label.setText(t('progress_analyzing'))
-        self.statusBar().showMessage(t('status_analyzing'))
-    
-    def _on_resources_found(self, resources: list) -> None:
-        """Handle resources discovery."""
-        self.resource_list.set_resources(resources)
-        self.download_btn.setEnabled(len(resources) > 0)
-    
-    def _on_analysis_completed(self) -> None:
-        """Handle analysis completion."""
-        self.analyze_btn.setEnabled(True)
-        self.progress_label.setText(t('progress_complete'))
-        self.statusBar().showMessage(t('status_ready'))
-    
-    def _on_download_started(self, resource: Resource) -> None:
-        """Handle download start."""
-        self.progress_label.setText(t('progress_downloading', resource.title[:50] + '...'))
-    
-    def _on_download_progress(self, resource: Resource, progress: float) -> None:
-        """Handle download progress update."""
-        self.resource_list.update_resource_progress(resource, progress)
-        self.progress_bar.setValue(int(progress * 100))
-    
-    def _on_download_completed(self, resource: Resource) -> None:
-        """Handle download completion."""
-        self.resource_list.update_resource_progress(resource, 1.0)
-    
-    def _on_download_failed(self, resource: Resource, error: str) -> None:
-        """Handle download failure."""
-        logger.error(f"Download failed: {resource.title} - {error}")
-    
-    def _on_overall_progress(self, completed: int, total: int) -> None:
-        """Handle overall progress update."""
-        self.progress_label.setText(t('progress_status', completed, total))
-        if total > 0:
-            self.progress_bar.setValue(int((completed / total) * 100))
-    
-    def _on_error(self, error_message: str) -> None:
-        """Handle error."""
-        QMessageBox.critical(self, t('dialog_error'), error_message)
-        self.statusBar().showMessage(t('status_error'))
-    
-    def _on_task_finished(self) -> None:
-        """Handle task completion."""
-        self.analyze_btn.setEnabled(True)
-        self.download_btn.setEnabled(True)
-        self.pause_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(False)
-        self.progress_label.setText(t('progress_all_done'))
-        self.statusBar().showMessage(t('status_ready'))
-        
-        QMessageBox.information(
-            self,
-            t('dialog_success'),
-            t('dialog_downloads_complete', self.output_dir)
+        self.downloader = DownloaderWorker(
+            self.scraped_data, selected, self.output_dir
         )
+        self.downloader.signals.log.connect(self.log_widget.append_log)
+        self.downloader.signals.overall_progress.connect(self._on_progress)
+        self.downloader.signals.finished.connect(self._on_download_done)
+        self.downloader.start()
+    
+    def _on_progress(self, current: int, total: int) -> None:
+        if total > 0:
+            self.progress_bar.setValue(int((current / total) * 100))
+            self.status_label.setText(f"下载中: {current}/{total}")
+    
+    def _on_download_done(self, success: int, total: int) -> None:
+        """Handle download completion."""
+        self.download_btn.setEnabled(True)
+        self.analyze_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+        self.category_panel.setEnabled(True)
+        self.status_label.setText("完成")
+        
+        if success > 0:
+            QMessageBox.information(
+                self, "下载完成",
+                f"成功: {success}/{total}\n\n保存到: {self.output_dir}"
+            )
+        self.downloader = None
+    
+    def _cancel_task(self) -> None:
+        """Cancel current task."""
+        if self.analyzer:
+            self.analyzer.cancel()
+        if self.downloader:
+            self.downloader.cancel()
+        self.cancel_btn.setEnabled(False)
+        self.log_widget.append_log("⏹ 已取消")
+    
+    def _choose_directory(self) -> None:
+        """Select output directory."""
+        path = QFileDialog.getExistingDirectory(self, "选择保存目录", self.output_dir)
+        if path:
+            self.output_dir = path
+            self.output_btn.setText(f"📁 保存到: {path}")
+    
+    def _update_download_state(self) -> None:
+        """Update download button state."""
+        self.download_btn.setEnabled(self.category_panel.has_selection())
     
     def closeEvent(self, event) -> None:
-        """Handle window close event."""
-        # Clean up worker thread
-        if self.worker and self.worker.isRunning():
-            self.worker.cancel()
-            self.worker.quit()
-            self.worker.wait(3000)  # Wait up to 3 seconds
+        """Cleanup on close - properly stop threads to prevent crash."""
+        # 先取消任务
+        if self.analyzer:
+            self.analyzer.cancel()
+        if self.downloader:
+            self.downloader.cancel()
+        
+        # 等待线程结束
+        if self.analyzer and self.analyzer.isRunning():
+            self.analyzer.quit()
+            self.analyzer.wait(2000)  # 最多等2秒
+            
+        if self.downloader and self.downloader.isRunning():
+            self.downloader.quit()
+            self.downloader.wait(2000)
         
         event.accept()

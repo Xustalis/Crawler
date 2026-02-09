@@ -17,13 +17,15 @@ A **production-ready** desktop application for intelligent web resource extracti
 
 ### ✨ Features
 
+- 🧠 **Smart UX**: Intelligent URL normalization (auto-HTTPS) and simplified workflow
+- 📊 **Aggregated Results**: Category-based resource counts instead of overwhelming file lists
 - 🔍 **Smart Parsing**: Intelligent extraction of videos, images, and M3U8 streams from any web page
 - 🎬 **M3U8 Support**: Automatic playlist parsing, segment downloading, and FFmpeg merging
-- 📦 **Batch Downloads**: Multi-resource selection with real-time progress tracking
+- 📦 **Batch Downloads**: One-click download for entire categories (Images, Videos, etc.)
 - ⏸️ **Pause & Resume**: Full control over download operations
 - 🌏 **Bilingual UI**: Seamless switching between Chinese and English
 - 🎨 **Modern UI**: Cyberpunk-inspired dark theme with responsive layouts
-- 🔒 **Production-Ready**: Comprehensive error handling with graceful degradation
+- 🔒 **Robust**: HTTPS->HTTP fallback and comprehensive error handling
 
 ### 🚀 Quick Start
 
@@ -123,13 +125,15 @@ This project is licensed under the **GNU General Public License v3.0** - see the
 
 ### ✨ 功能特性
 
+- 🧠 **智能体验**：智能 URL 归一化（自动补全 HTTPS）和简化的工作流
+- 📊 **聚合结果**：基于类别的资源统计，告别眼花缭乱的文件列表
 - 🔍 **智能解析**：从任何网页智能提取视频、图片和 M3U8 流
 - 🎬 **M3U8 支持**：自动播放列表解析、分段下载和 FFmpeg 合并
-- 📦 **批量下载**：多资源选择，实时进度跟踪
+- 📦 **批量下载**：一键下载整个类别（图片、视频等）
 - ⏸️ **暂停与恢复**：完全控制下载操作
 - 🌏 **双语界面**：中英文无缝切换
 - 🎨 **现代化界面**：赛博朋克风格暗黑主题，响应式布局
-- 🔒 **生产就绪**：全面的错误处理和优雅降级
+- 🔒 **健壮稳定**：HTTPS->HTTP 自动降级和全面的错误处理
 
 ### 🚀 快速开始
 
@@ -214,7 +218,3 @@ Crawler/
 - **PyQt6**：强大的 GUI 框架
 - **BeautifulSoup**：HTML 解析
 - **FFmpeg**：视频处理
-
----
-
-**用 ❤️ 构建，使用 Python 和 PyQt6**
