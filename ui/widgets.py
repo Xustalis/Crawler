@@ -80,8 +80,8 @@ class ResourceDetailDialog(QDialog):
             item.setCheckState(Qt.CheckState.Checked if is_checked else Qt.CheckState.Unchecked)
             self.table.setItem(i, 0, item)
             self.table.setItem(i, 1, QTableWidgetItem(str(res.url)))
-            self.table.setItem(i, 2, QTableWidgetItem(str(res.filename or "")))
-            size_mb = res.size / (1024 * 1024) if res.size else 0
+            self.table.setItem(i, 2, QTableWidgetItem(str(res.title or "")))
+            size_mb = res.file_size / (1024 * 1024) if res.file_size else 0
             size_str = f"{size_mb:.2f} MB" if size_mb > 0 else "Unknown"
             self.table.setItem(i, 3, QTableWidgetItem(size_str))
             
@@ -113,8 +113,6 @@ class CategoryCheckbox(QFrame):
         super().__init__(parent)
         self.label_key = label_key
         self.setFrameStyle(QFrame.Shape.StyledPanel)
-        
-        # [修改] 强制高度 50px (非常紧凑，绝不会遮挡)
         self.setFixedHeight(50)
         # 水平扩展，垂直固定
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
