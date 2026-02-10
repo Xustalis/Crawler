@@ -1,4 +1,4 @@
-# 🕷️ Aegis Crawler / 宙斯盾爬虫
+# 🕷️ Crawler / 爬虫工具
 
 <div align="center">
 
@@ -17,7 +17,7 @@
 <a name="english"></a>
 ## 📖 Introduction
 
-**Aegis Crawler** is an industrial-grade, desktop-based web resource extraction tool designed for high-performance and stability. It features a modern, cyberpunk-inspired UI, intelligent parsing strategies, and a robust concurrency model suitable for heavy-duty scraping tasks.
+**Crawler** is an industrial-grade, desktop-based web resource extraction tool designed for high-performance and stability. It features a modern, cyberpunk-inspired UI, intelligent parsing strategies, and a robust concurrency model suitable for heavy-duty scraping tasks.
 
 ### ✨ Key Features
 
@@ -30,29 +30,29 @@
 
 ### 🏗️ Architecture Design
 
-The application follows a **Producer-Consumer** pattern with valid clean architecture principles.
+The application is built on a robust **Event-Driven Component Architecture**, ensuring high scalability and modularity. It orchestrates asynchronous tasks through a central worker pool, decoupling the user interface from intensive background operations.
 
 ```mermaid
 graph TD
-    UI[User Interface (PyQt6)] -->|Signal: Start/Stop| WP[Worker Pool]
-    WP -->|Spawn| RW[Request Workers (Threads)]
+    UI["User Interface (PyQt6)"] -->|Signal: Start/Stop| WP["Worker Pool"]
+    WP -->|Spawn| RW["Request Workers (Threads)"]
     
     subgraph Core Logic
-        RW -->|Fetch| NET[Network Manager]
-        RW -->|Parse| PAR[Parser Engine]
-        PAR -->|Extract| RES[Resources]
+        RW -->|Fetch| NET["Network Manager"]
+        RW -->|Parse| PAR["Parser Engine"]
+        PAR -->|Extract| RES["Resources"]
     end
     
     subgraph Data Persistence
-        RES -->|Store| DB[(SQLite Database)]
-        DB -->|WAL Mode| WAL[Write-Ahead Log]
+        RES -->|Store| DB[("SQLite Database")]
+        DB -->|WAL Mode| WAL["Write-Ahead Log"]
     end
     
     subgraph Download System
-        UI -->|Signal: Download| TP[Thread Pool]
-        TP -->|Execute| DL[Download Runnable]
+        UI -->|Signal: Download| TP["Thread Pool"]
+        TP -->|Execute| DL["Download Runnable"]
         DL -->|Stream| NET
-        DL -->|Write| FS[File System]
+        DL -->|Write| FS["File System"]
     end
 ```
 
@@ -105,7 +105,7 @@ We welcome contributions! Please follow these steps to ensure a smooth process:
 <a name="chinese"></a>
 ## 📖 简介 (Introduction)
 
-**宙斯盾爬虫 (Aegis Crawler)** 是一款工业级桌面端网页资源提取工具，专为高性能和稳定性而设计。它拥有现代化的赛博朋克风格界面、智能解析策略以及适合高负载抓取任务的健壮并发模型。
+**Crawler** 是一款工业级桌面端网页资源提取工具，专为高性能和稳定性而设计。它拥有现代化的赛博朋克风格界面、智能解析策略以及适合高负载抓取任务的健壮并发模型。
 
 ### ✨ 核心特性
 
@@ -118,7 +118,7 @@ We welcome contributions! Please follow these steps to ensure a smooth process:
 
 ### 🏗️ 架构设计
 
-本应用遵循 **生产者-消费者** 模式，采用清晰的分层架构原则。
+本应用采用坚固的**事件驱动组件架构**，确保了高可扩展性和模块化。它通过中心化的工作线程池编排异步任务，实现了用户界面与高负载后台操作的完全解耦。
 
 - **UI 层**: 负责用户交互，通过信号槽机制与业务逻辑解耦。
 - **Core 层**: 包含网络请求、HTML 解析、数据库管理等核心业务逻辑。
