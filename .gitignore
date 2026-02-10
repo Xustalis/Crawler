@@ -40,6 +40,11 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# 忽略所有 SQLite 数据库文件
+*.db
+*.db-shm
+*.db-wal
+
 # Application Data
 crawler_data.db
 crawler_data.db-wal
