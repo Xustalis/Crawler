@@ -26,12 +26,12 @@ class DatabaseManager:
         return conn
 
     def _init_db(self):
-        """Initialize database schema."""
+        """Initialize database schema and enable WAL."""
         create_tasks_table = """
         CREATE TABLE IF NOT EXISTS tasks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_url TEXT NOT NULL,
-            status TEXT DEFAULT 'pending', -- pending, running, completed, failed, cancelled
+            status TEXT DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             finished_at TIMESTAMP,
             total_items INTEGER DEFAULT 0,
@@ -49,7 +49,7 @@ class DatabaseManager:
             filename TEXT,
             local_path TEXT,
             file_size INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'pending', -- pending, downloaded, failed
+            status TEXT DEFAULT 'pending',
             error_msg TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks (id)
@@ -58,10 +58,12 @@ class DatabaseManager:
         
         try:
             with self._get_connection() as conn:
+                # Enable Write-Ahead Logging for concurrency
+                conn.execute("PRAGMA journal_mode=WAL;")
                 conn.execute(create_tasks_table)
                 conn.execute(create_resources_table)
                 conn.commit()
-            logger.info(f"Database initialized at {self.db_path}")
+            logger.info(f"Database initialized at {self.db_path} (WAL enabled)")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
 
@@ -141,8 +143,8 @@ class DatabaseManager:
             logger.error(f"Error adding resource: {e}")
             return -1
 
-    def update_resource_status(self, url: str, status: str, local_path: str = None, file_size: int = 0, error: str = None):
-        """Update resource status by URL (simplest for workers)."""
+    def update_resource_status(self, task_id: int, url: str, status: str, local_path: str = None, file_size: int = 0, error: str = None):
+        """Update resource status by Task ID and URL."""
         try:
             with self._get_connection() as conn:
                 query = "UPDATE resources SET status = ?, updated_at = ?"
@@ -160,7 +162,8 @@ class DatabaseManager:
                     query += ", error_msg = ?"
                     params.append(error)
                 
-                query += " WHERE url = ?"
+                query += " WHERE task_id = ? AND url = ?"
+                params.append(task_id)
                 params.append(url)
                 
                 conn.execute(query, tuple(params))

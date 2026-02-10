@@ -13,6 +13,7 @@ from core.crawl_queue import CrawlQueue, CrawlTask, Priority
 from core.scraped_data import ScrapedData
 from core.models import Resource, ResourceType
 from workers.request_worker import RequestWorker
+from core.database import DatabaseManager
 from utils.logger import setup_logger
 
 
@@ -54,6 +55,10 @@ class WorkerPool(QObject):
         # Results aggregation
         self.scraped_data: Optional[ScrapedData] = None
         self._results_lock = None  # Will use threading.Lock if needed
+        
+        # Database
+        self.db = DatabaseManager()
+        self.task_id = -1
     
     def start_crawl(self, seed_url: str):
         """
@@ -64,6 +69,10 @@ class WorkerPool(QObject):
         """
         # Initialize ScrapedData
         self.scraped_data = ScrapedData(source_url=seed_url)
+        
+        # Create Task in DB (Mark as 'scanning')
+        self.task_id = self.db.create_task(seed_url, save_path="[SCAN ONLY]")
+        self.db.update_task_status(self.task_id, "scanning")
         
         # Add seed task
         seed_task = CrawlTask(url=seed_url, depth=1, priority=Priority.HIGH)
@@ -155,6 +164,9 @@ class WorkerPool(QObject):
         self.pool_progress.emit(stats['completed'], stats['total_queued'])
         
         self.log_message.emit(f"Completed {url}: {len(resources)} resources, {len(links)} links")
+        
+        # Optional: Update partial stats in DB (e.g. every 10 items) or just at end
+        # self.db.update_task_progress(self.task_id, 0, stats['completed'])
     
     def _on_task_failed(self, url: str, error: str):
         """Handle task failure."""
@@ -191,6 +203,14 @@ class WorkerPool(QObject):
             if self.scraped_data is None:
                 self.log_message.emit("ERROR: scraped_data is None!")
                 self.scraped_data = ScrapedData(source_url="unknown")
+            
+            # Mark Task as Finished in DB
+            total_items = (len(self.scraped_data.images) + len(self.scraped_data.videos) + 
+                          len(self.scraped_data.m3u8_streams) + len(self.scraped_data.documents) + 
+                          len(self.scraped_data.audios))
+                          
+            self.db.update_task_progress(self.task_id, 0, total_items)
+            self.db.update_task_status(self.task_id, "scanned", finished=True)
             
             self.pool_finished.emit(self.scraped_data)
     

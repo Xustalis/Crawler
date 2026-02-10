@@ -85,6 +85,7 @@ class DownloadRunnable(QRunnable):
         # Update DB
         status = "completed" if success else "failed"
         self.db.update_resource_status(
+            task_id=self.task_id,
             url=url, 
             status=status, 
             local_path=local_path if success else None,
