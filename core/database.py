@@ -111,6 +111,30 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Error updating progress for task {task_id}: {e}")
 
+    def delete_task(self, task_id: int):
+        """Delete a task and its resources."""
+        try:
+            with self._get_connection() as conn:
+                # Cascade delete resources first (though foreign key might handle it, explicit is safer if not enabled)
+                conn.execute("DELETE FROM resources WHERE task_id = ?", (task_id,))
+                conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+                conn.commit()
+            logger.info(f"Deleted task {task_id}")
+        except Exception as e:
+            logger.error(f"Error deleting task {task_id}: {e}")
+
+    def clear_all_tasks(self):
+        """Delete all tasks and resources."""
+        try:
+            with self._get_connection() as conn:
+                conn.execute("DELETE FROM resources")
+                conn.execute("DELETE FROM tasks")
+                conn.execute("DELETE FROM sqlite_sequence WHERE name='tasks' OR name='resources'")
+                conn.commit()
+            logger.info("Cleared all history")
+        except Exception as e:
+            logger.error(f"Error clearing history: {e}")
+
     def add_resource(self, task_id: int, resource_obj: Any) -> int:
         """
         Add a resource record. 

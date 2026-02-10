@@ -67,7 +67,39 @@ class DownloadRunnable(QRunnable):
                 success = True
                 file_size = len(self.resource.content.encode('utf-8'))
             else:
-                # Network Download
+                # Optimized Network Download with Smart Skip
+                
+                # 1. Check if file exists locally
+                if filepath.exists() and filepath.stat().st_size > 0:
+                    local_size = filepath.stat().st_size
+                    try:
+                        # 2. Perform HEAD request to get remote size
+                        head = requests.head(url, headers=self.headers, timeout=10, allow_redirects=True)
+                        remote_size = int(head.headers.get('content-length', 0))
+                        
+                        if remote_size > 0 and abs(remote_size - local_size) < 100: # Allow small discrepancy logic? Or strict? Strict for now.
+                            # Actually, allow 0 difference ideally.
+                            if remote_size == local_size:
+                                print(f"Skipping {filename} (Already exists, size matches)")
+                                success = True
+                                file_size = local_size
+                                local_path = str(filepath) # Set local path
+                                # Early return/update
+                                self.db.update_resource_status(
+                                    task_id=self.task_id,
+                                    url=url, 
+                                    status="completed", 
+                                    local_path=local_path,
+                                    file_size=file_size,
+                                    error="Skipped (cached)"
+                                )
+                                if self.callback:
+                                    self.callback(True, url, "Skipped (cached)")
+                                return
+                    except:
+                        pass # Head failed, proceed to download to be safe
+
+                # 3. Stream download
                 with requests.get(url, headers=self.headers, stream=True, timeout=60) as r:
                     r.raise_for_status()
                     file_size = int(r.headers.get('content-length', 0))

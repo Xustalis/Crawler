@@ -65,8 +65,10 @@ class RequestWorker(QObject):
             self.task_started.emit(task.url)
             
             # Random delay
-            delay = random.uniform(0.1, 0.5)
-            time.sleep(delay)
+            # delay = random.uniform(0.1, 0.5)
+            # time.sleep(delay)
+            # Remove artificial sleep for performance
+            pass
             
             # Parse using robust parser
             resources, links = self.parser.parse(task.url)

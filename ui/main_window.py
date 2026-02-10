@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLineEdit, QPushButton, QLabel, QProgressBar,
     QGroupBox, QMessageBox, QFileDialog, QMenuBar, QMenu,
-    QSlider, QScrollArea, QFrame
+    QSlider, QScrollArea, QFrame, QCheckBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QFont
@@ -182,6 +182,12 @@ class MainWindow(QMainWindow):
         
         self.concurrency_group.setLayout(concurrency_layout)
         main_layout.addWidget(self.concurrency_group)
+
+        # Add Auto Checkbox inside group
+        self.auto_concurrency_cb = QCheckBox("Auto / 自动调配")
+        self.auto_concurrency_cb.setToolTip("Automatically adjust workers based on queue size")
+        self.auto_concurrency_cb.stateChanged.connect(self._on_auto_concurrency_toggled)
+        concurrency_layout.addWidget(self.auto_concurrency_cb)
         
         # Step 2: Resource Selection
         self.result_group = QGroupBox()
@@ -340,6 +346,14 @@ class MainWindow(QMainWindow):
         self.num_workers = val
         self.concurrency_label.setText(t('concurrency_label', val))
 
+    def _on_auto_concurrency_toggled(self, state):
+        is_auto = (state == Qt.CheckState.Checked.value)
+        self.concurrency_slider.setEnabled(not is_auto)
+        if is_auto:
+            self.concurrency_label.setText(f"Workers: Auto")
+        else:
+            self.concurrency_label.setText(f"Workers: {self.concurrency_slider.value()}")
+
     def _check_environment(self) -> None:
         """Check FFmpeg."""
         available, msg = check_ffmpeg()
@@ -369,7 +383,9 @@ class MainWindow(QMainWindow):
         self.worker_pool.pool_finished.connect(self._on_analysis_done)
         self.worker_pool.error_occurred.connect(self._on_analysis_error)
         
-        self.worker_pool.start_crawl(url)
+        self.worker_pool.error_occurred.connect(self._on_analysis_error)
+        
+        self.worker_pool.start_crawl(url, auto_concurrency=self.auto_concurrency_cb.isChecked())
         self.status_label.setText(t('status_analyzing'))
     
     def _set_encoding_state(self, is_running: bool):

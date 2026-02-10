@@ -40,6 +40,12 @@ class HistoryWidget(QWidget):
         btn_layout.addWidget(self.open_dir_btn)
         
         btn_layout.addStretch()
+        
+        self.clear_btn = QPushButton("Clear All / 清空记录")
+        self.clear_btn.setStyleSheet("background-color: #d9534f; color: white; border: none; padding: 5px 10px; border-radius: 4px;")
+        self.clear_btn.clicked.connect(self._clear_all_history)
+        btn_layout.addWidget(self.clear_btn)
+        
         layout.addLayout(btn_layout)
         
         # Table
@@ -98,7 +104,7 @@ class HistoryWidget(QWidget):
             
             # Status
             status_item = QTableWidgetItem(task['status'])
-            if task['status'] == 'completed':
+            if task['status'] == 'completed' or task['status'] == 'scanned':
                 status_item.setForeground(QColor("#4ec9b0"))
             elif task['status'] == 'failed':
                 status_item.setForeground(QColor("#f48771"))
@@ -112,14 +118,14 @@ class HistoryWidget(QWidget):
             
             # Date
             created = task['created_at']
+            date_str = str(created)
             if isinstance(created, str):
-                # Attempt to parse if string
                 try:
-                    # SQLite default format: YYYY-MM-DD HH:MM:SS
-                    created = created.split('.')[0]
+                     # Attempt to clean up Z or T if present
+                     date_str = created.replace('T', ' ').split('.')[0]
                 except:
-                    pass
-            self.table.setItem(row, 4, QTableWidgetItem(str(created)))
+                     pass
+            self.table.setItem(row, 4, QTableWidgetItem(date_str))
             
             # Path
             path_item = QTableWidgetItem(task['save_path'])
@@ -132,6 +138,10 @@ class HistoryWidget(QWidget):
         open_action = QAction("Open Folder", self)
         open_action.triggered.connect(self._open_selected_folder)
         menu.addAction(open_action)
+        
+        delete_action = QAction("Delete Record", self)
+        delete_action.triggered.connect(self._delete_selected_task)
+        menu.addAction(delete_action)
         
         menu.exec(self.table.mapToGlobal(pos))
 
@@ -146,5 +156,24 @@ class HistoryWidget(QWidget):
             if path and os.path.exists(path):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(path))
             else:
-                QMessageBox.warning(self, "Error", f"Folder not found: {path}")
+                QMessageBox.warning(self, "Error", f"Folder not found: {path}\n(It might have been deleted, feel free to delete the history record)")
+
+    def _delete_selected_task(self):
+        row = self.table.currentRow()
+        if row < 0: return
+        
+        task_id = int(self.table.item(row, 0).text())
+        reply = QMessageBox.question(self, 'Confirm Delete', f"Delete history for Task ID {task_id}?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.db.delete_task(task_id)
+            self.load_history()
+
+    def _clear_all_history(self):
+        reply = QMessageBox.question(self, 'Confirm Clear', "Are you sure you want to clear ALL history?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self.db.clear_all_tasks()
+            self.load_history()
 

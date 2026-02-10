@@ -57,42 +57,73 @@ class PageParser:
         """
         logger.info(f"Parsing URL: {url}")
         
-        # Fetch page content
-        response = self.network.get(url)
-        if not response:
-            return [], []
-        
-        # Strategy 1: MIME Detection
-        content_type = response.headers.get('Content-Type', '').lower()
-        
-        if 'application/json' in content_type:
-            return self._parse_json_response(response), []
-        
-        # Default to HTML parsing
-        return self._parse_html_response(response)
-
-    def _parse_json_response(self, response: requests.Response) -> List[Resource]:
-        """Parse JSON response into a text resource."""
         try:
-            data = response.json()
-            formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
+            # Optimize: Stream the request to check headers first
+            # We don't want to download 100MB videos just to parse them
+            response = self.network.get(url, stream=True)
+            if not response:
+                return [], []
+                
+            # Strategy 1: MIME Detection & Traffic Optimization
+            content_type = response.headers.get('Content-Type', '').lower()
             
-            return [Resource(
-                url=response.url,
-                resource_type=ResourceType.JSON_DATA,
-                title="API Response",
-                file_extension=".json",
-                content=formatted_json,
-                metadata={'status_code': response.status_code}
-            )]
+            # Reject binary/large content types immediately
+            if not any(t in content_type for t in ['text/html', 'application/json', 'application/xml', 'text/plain']):
+                logger.warning(f"Skipping non-parsable content: {url} ({content_type})")
+                response.close()
+                return [], []
+            
+            # Read content (now safe)
+            # Limit size to avoid memory issues with massive text files
+            # 10MB limit for parsing
+            content = b""
+            for chunk in response.iter_content(chunk_size=8192):
+                 content += chunk
+                 if len(content) > 10 * 1024 * 1024:
+                     logger.warning(f"Page too large, truncating: {url}")
+                     break
+            
+            # Manually decode
+            encoding = response.encoding or response.apparent_encoding
+            text = content.decode(encoding, errors='replace')
+            
+            # Create a dummy response object with the text for existing methods
+            # (or refactor methods to accept text, but this preserves signature)
+            response._content = content
+            # response.text is property, relying on .encoding
+            
+            if 'application/json' in content_type:
+                # We need to reconstruct a response-like object or just duplicate the logic
+                # For simplicity, we'll adapt _parse_json_response to take data/url
+                try:
+                    data = json.loads(text)
+                    return self._parse_json_data(data, url, response.status_code), []
+                except:
+                    return [], []
+            
+            # Default to HTML parsing
+            return self._parse_html_text(text, url)
+            
         except Exception as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            return []
+            logger.error(f"Error parsing {url}: {e}")
+            return [], []
 
-    def _parse_html_response(self, response: requests.Response) -> tuple[List[Resource], List[str]]:
-        """Parse HTML response for videos, images, and text."""
-        soup = BeautifulSoup(response.text, 'lxml')
-        base_url = response.url
+    def _parse_json_data(self, data: Any, url: str, status_code: int) -> List[Resource]:
+        """Parse JSON data."""
+        formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
+        return [Resource(
+            url=url,
+            resource_type=ResourceType.JSON_DATA,
+            title="API Response",
+            file_extension=".json",
+            content=formatted_json,
+            metadata={'status_code': status_code}
+        )]
+
+    def _parse_html_text(self, text: str, url: str) -> tuple[List[Resource], List[str]]:
+        """Parse HTML text."""
+        soup = BeautifulSoup(text, 'lxml')
+        base_url = url
         resources = []
         
         # V3.0: Smart content extraction - only parse main content area
@@ -111,7 +142,7 @@ class PageParser:
         # Discover pagination links (use original soup for nav)
         pagination_links = self.get_pagination_links(soup, base_url)
         
-        logger.info(f"Extracted {len(resources)} resources and {len(pagination_links)} links from {response.url}")
+        logger.info(f"Extracted {len(resources)} resources and {len(pagination_links)} links from {url}")
         
         return resources, pagination_links
     

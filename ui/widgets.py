@@ -98,6 +98,8 @@ class ResourceDetailDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setVisible(False)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu_table)
         self._populate_table()
         self.stack.addWidget(self.table)
         
@@ -109,6 +111,8 @@ class ResourceDetailDialog(QDialog):
             self.list_widget.setResizeMode(QListWidget.ResizeMode.Adjust)
             self.list_widget.setSpacing(10)
             self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.MultiSelection)
+            self.list_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            self.list_widget.customContextMenuRequested.connect(self._show_context_menu_list)
             self._populate_grid()
             self.list_widget.itemSelectionChanged.connect(self._sync_selection_from_grid)
             self.stack.addWidget(self.list_widget)
@@ -260,6 +264,39 @@ class ResourceDetailDialog(QDialog):
             
     def get_selected_urls(self) -> Set[str]:
         return self.selected_urls
+
+    def _show_context_menu_table(self, pos):
+        item = self.table.itemAt(pos)
+        if not item: return
+        
+        row = item.row()
+        url = self.resources[row].url
+        self._show_menu(pos, self.table, url)
+
+    def _show_context_menu_list(self, pos):
+        item = self.list_widget.itemAt(pos)
+        if not item: return
+        
+        url = item.data(Qt.ItemDataRole.UserRole)
+        self._show_menu(pos, self.list_widget, url)
+
+    def _show_menu(self, pos, widget, url):
+        menu = QMenu(widget)
+        
+        copy_action = QAction("Copy Link / 复制链接", widget)
+        copy_action.triggered.connect(lambda: self._copy_to_clipboard(url))
+        menu.addAction(copy_action)
+        
+        open_action = QAction("Open in Browser / 浏览器打开", widget)
+        open_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(url)))
+        menu.addAction(open_action)
+        
+        menu.exec(widget.mapToGlobal(pos))
+
+    def _copy_to_clipboard(self, text):
+        from PyQt6.QtWidgets import QApplication
+        QApplication.clipboard().setText(text)
+
 
     def closeEvent(self, event):
         if self.thumbnail_thread:
