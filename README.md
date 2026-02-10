@@ -26,7 +26,7 @@
 - **Traffic Optimization**: Intelligent header inspection to skip large binary files during scanning.
 - **💾 M3U8 HLS Support**: Native support for HLS streaming, including segment downloading and FFmpeg merging.
 - **🛡️ Robustness**: Global exception handling, session pooling, and automatic retries with exponential backoff.
-- **🎨 Modern UI**: Responsive PyQt6 interface with dark mode and bilingual support (EN/ZH).
+- **🎨 Modern UI**: Responsive PyQt6 interface with bilingual support (EN/ZH).
 
 ### 🏗️ Architecture Design
 
@@ -114,7 +114,7 @@ We welcome contributions! Please follow these steps to ensure a smooth process:
 - **流量优化**: 智能 HTTP 头检查，在扫描阶段自动跳过大型二进制文件，节省带宽。
 - **💾 M3U8 HLS 支持**: 原生支持 HLS 流媒体，包括分片下载和 FFmpeg 自动合并。
 - **🛡️ 健壮性**: 全局异常处理、会话池管理以及带指数退避的自动重试机制。
-- **🎨 现代化 UI**: 响应式 PyQt6 界面，支持暗黑模式和中英双语切换。
+- **🎨 现代化 UI**: 响应式 PyQt6 界面，支持中英双语切换。
 
 ### 🏗️ 架构设计
 
@@ -174,4 +174,3 @@ python app.py
 
 Distributed under the **GPL v3 License**. See `LICENSE` for more information.
 
-> **Project Aegis** - *Secure, Fast, Intelligent.*
