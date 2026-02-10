@@ -1,148 +1,137 @@
-# 🌐 Crawler - Production Web Scraper
-# 🌐 Crawler - 生产级网页爬虫工具
+# 🕷️ Aegis Crawler / 宙斯盾爬虫
 
-[English](#english) | [中文](#chinese)
+<div align="center">
+
+![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10+-yellow.svg)
+![PyQt6](https://img.shields.io/badge/PyQt6-6.6+-green.svg)
+![License](https://img.shields.io/badge/license-GPL%20v3-red.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+
+[English](#english) | [中文 (Chinese)](#chinese)
+
+</div>
 
 ---
 
 <a name="english"></a>
-## English Version
+## 📖 Introduction
 
-![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)
-![PyQt6](https://img.shields.io/badge/PyQt6-6.6+-green.svg)
-![License](https://img.shields.io/badge/license-GPL%20v3-orange.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+**Aegis Crawler** is an industrial-grade, desktop-based web resource extraction tool designed for high-performance and stability. It features a modern, cyberpunk-inspired UI, intelligent parsing strategies, and a robust concurrency model suitable for heavy-duty scraping tasks.
 
-A **production-ready** desktop application for intelligent web resource extraction with advanced M3U8 streaming support. Built with clean architecture principles and strict type safety.
+### ✨ Key Features
 
-### ✨ Features
+- **🚀 Dynamic Concurrency**: Adaptive worker pool that scales based on queue depth and system load.
+- **🧠 Smart Parsing**: Heuristic-based content extraction for HTML, JSON, and M3U8 streams.
+- **Traffic Optimization**: Intelligent header inspection to skip large binary files during scanning.
+- **💾 M3U8 HLS Support**: Native support for HLS streaming, including segment downloading and FFmpeg merging.
+- **🛡️ Robustness**: Global exception handling, session pooling, and automatic retries with exponential backoff.
+- **🎨 Modern UI**: Responsive PyQt6 interface with dark mode and bilingual support (EN/ZH).
 
-- 🧠 **Smart UX**: Intelligent URL normalization (auto-HTTPS) and simplified workflow
-- 📊 **Aggregated Results**: Category-based resource counts instead of overwhelming file lists
-- 🔍 **Smart Parsing**: Intelligent extraction of videos, images, and M3U8 streams from any web page
-- 🎬 **M3U8 Support**: Automatic playlist parsing, segment downloading, and FFmpeg merging
-- 📦 **Batch Downloads**: One-click download for entire categories (Images, Videos, etc.)
-- ⏸️ **Pause & Resume**: Full control over download operations
-- 🌏 **Bilingual UI**: Seamless switching between Chinese and English
-- 🎨 **Modern UI**: Cyberpunk-inspired dark theme with responsive layouts
-- 🔒 **Robust**: HTTPS->HTTP fallback and comprehensive error handling
+### 🏗️ Architecture Design
 
-### 🚀 Quick Start
+The application follows a **Producer-Consumer** pattern with valid clean architecture principles.
+
+```mermaid
+graph TD
+    UI[User Interface (PyQt6)] -->|Signal: Start/Stop| WP[Worker Pool]
+    WP -->|Spawn| RW[Request Workers (Threads)]
+    
+    subgraph Core Logic
+        RW -->|Fetch| NET[Network Manager]
+        RW -->|Parse| PAR[Parser Engine]
+        PAR -->|Extract| RES[Resources]
+    end
+    
+    subgraph Data Persistence
+        RES -->|Store| DB[(SQLite Database)]
+        DB -->|WAL Mode| WAL[Write-Ahead Log]
+    end
+    
+    subgraph Download System
+        UI -->|Signal: Download| TP[Thread Pool]
+        TP -->|Execute| DL[Download Runnable]
+        DL -->|Stream| NET
+        DL -->|Write| FS[File System]
+    end
+```
+
+### 🚀 Getting Started
 
 #### Prerequisites
-1. **Python 3.10+** installed
-2. **FFmpeg** installed and added to PATH (for M3U8 support)
-   - Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
-   - Linux: `sudo apt install ffmpeg`
-   - macOS: `brew install ffmpeg`
+- **Python 3.10+**
+- **FFmpeg** (Required for video processing)
+  - Windows: [Download](https://ffmpeg.org/download.html)
+  - Linux: `sudo apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
 
 #### Installation
 
 ```bash
-# 1. Clone the repository
+# 1. Clone repository
 git clone https://github.com/Xustalis/Crawler.git
 cd Crawler
 
-# 2. Create virtual environment (recommended)
+# 2. Setup virtual environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Windows
+venv\Scripts\activate
+# Linux/macOS
+source venv/bin/activate
 
 # 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Run the application
+# 4. Run application
 python app.py
 ```
 
-### 📂 Project Structure
+### 🤝 Contribution Guidelines
 
-```
-Crawler/
-├── app.py                    # Application entry point
-├── requirements.txt          # Python dependencies
-├── LICENSE                   # GPL v3 License
-│
-├── core/                     # Business logic layer
-│   ├── models.py            # Resource data models
-│   ├── parser.py            # HTML parsing engine
-│   ├── downloader.py        # Download manager
-│   └── m3u8_handler.py      # M3U8 stream handler
-│
-├── workers/                  # QThread workers
-│   ├── signals.py           # Signal definitions
-│   └── crawler_worker.py    # Main worker thread
-│
-├── ui/                       # PyQt6 interface
-│   ├── main_window.py       # Main window
-│   ├── widgets.py           # Custom widgets
-│   ├── styles.py            # QSS stylesheets
-│   └── i18n.py              # Internationalization
-│
-└── utils/                    # Utility functions
-    ├── ffmpeg_checker.py    # FFmpeg detection
-    ├── sanitizer.py         # Filename cleaning
-    └── logger.py            # Logging setup
-```
+We welcome contributions! Please follow these steps to ensure a smooth process:
 
-### 🛠️ Troubleshooting
+1.  **Fork the Project**: Create your own copy of the repository.
+2.  **Create Feature Branch**: `git checkout -b feature/AmazingFeature`
+3.  **Commit Changes**: `git commit -m 'feat: Add some AmazingFeature'` - please use [Conventional Commits](https://www.conventionalcommits.org/).
+4.  **Push to Branch**: `git push origin feature/AmazingFeature`
+5.  **Open Pull Request**: Describe your changes in detail.
 
-**Issue: "FFmpeg not found"**
-- Verify: `ffmpeg -version`
-- Install FFmpeg and add to system PATH
-
-**Issue: "403 Forbidden" Error**
-- The app uses `fake-useragent` and Referer headers
-- Some sites may have advanced anti-scraping measures
-
-### 📝 License
-
-This project is licensed under the **GNU General Public License v3.0** - see the [LICENSE](LICENSE) file for details.
-
-**Note**: GPL v3 is compatible with PyQt6's GPL/Commercial dual licensing.
-
-### 👤 Author
-
-**Xustalis**
-- GitHub: [@Xustalis](https://github.com/Xustalis)
-
-### 🙏 Acknowledgments
-
-- **PyQt6**: Powerful GUI framework
-- **BeautifulSoup**: HTML parsing
-- **FFmpeg**: Video processing
+**Reporting Issues:**
+- Please use the [Issue Tracker](https://github.com/Xustalis/Crawler/issues).
+- Include reproduction steps, logs, and screenshots.
 
 ---
 
 <a name="chinese"></a>
-## 中文版本
+## 📖 简介 (Introduction)
 
-![Python 版本](https://img.shields.io/badge/python-3.10+-blue.svg)
-![PyQt6](https://img.shields.io/badge/PyQt6-6.6+-green.svg)
-![许可证](https://img.shields.io/badge/license-GPL%20v3-orange.svg)
-![平台](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+**宙斯盾爬虫 (Aegis Crawler)** 是一款工业级桌面端网页资源提取工具，专为高性能和稳定性而设计。它拥有现代化的赛博朋克风格界面、智能解析策略以及适合高负载抓取任务的健壮并发模型。
 
-一个**生产级**桌面应用程序，用于智能网页资源提取，支持高级 M3U8 流媒体处理。采用清晰的架构原则和严格的类型安全构建。
+### ✨ 核心特性
 
-### ✨ 功能特性
+- **🚀 动态并发**: 自适应工作线程池，根据队列深度和系统负载自动伸缩。
+- **🧠 智能解析**: 基于启发式的 HTML、JSON 和 M3U8 流媒体内容提取。
+- **流量优化**: 智能 HTTP 头检查，在扫描阶段自动跳过大型二进制文件，节省带宽。
+- **💾 M3U8 HLS 支持**: 原生支持 HLS 流媒体，包括分片下载和 FFmpeg 自动合并。
+- **🛡️ 健壮性**: 全局异常处理、会话池管理以及带指数退避的自动重试机制。
+- **🎨 现代化 UI**: 响应式 PyQt6 界面，支持暗黑模式和中英双语切换。
 
-- 🧠 **智能体验**：智能 URL 归一化（自动补全 HTTPS）和简化的工作流
-- 📊 **聚合结果**：基于类别的资源统计，告别眼花缭乱的文件列表
-- 🔍 **智能解析**：从任何网页智能提取视频、图片和 M3U8 流
-- 🎬 **M3U8 支持**：自动播放列表解析、分段下载和 FFmpeg 合并
-- 📦 **批量下载**：一键下载整个类别（图片、视频等）
-- ⏸️ **暂停与恢复**：完全控制下载操作
-- 🌏 **双语界面**：中英文无缝切换
-- 🎨 **现代化界面**：赛博朋克风格暗黑主题，响应式布局
-- 🔒 **健壮稳定**：HTTPS->HTTP 自动降级和全面的错误处理
+### 🏗️ 架构设计
+
+本应用遵循 **生产者-消费者** 模式，采用清晰的分层架构原则。
+
+- **UI 层**: 负责用户交互，通过信号槽机制与业务逻辑解耦。
+- **Core 层**: 包含网络请求、HTML 解析、数据库管理等核心业务逻辑。
+- **Workers 层**: 包含请求工作线程和下载线程池，负责具体任务执行。
 
 ### 🚀 快速开始
 
 #### 前置要求
-1. 安装 **Python 3.10+**
-2. 安装 **FFmpeg** 并添加到 PATH（M3U8 支持必需）
-   - Windows: 从 [ffmpeg.org](https://ffmpeg.org/download.html) 下载
-   - Linux: `sudo apt install ffmpeg`
-   - macOS: `brew install ffmpeg`
+- **Python 3.10+**
+- **FFmpeg** (视频处理必需)
+  - Windows: [下载](https://ffmpeg.org/download.html)并添加到 PATH
+  - Linux: `sudo apt install ffmpeg`
+  - macOS: `brew install ffmpeg`
 
 #### 安装步骤
 
@@ -151,9 +140,12 @@ This project is licensed under the **GNU General Public License v3.0** - see the
 git clone https://github.com/Xustalis/Crawler.git
 cd Crawler
 
-# 2. 创建虚拟环境（推荐）
+# 2. 创建虚拟环境
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# Windows
+venv\Scripts\activate
+# Linux/macOS
+source venv/bin/activate
 
 # 3. 安装依赖
 pip install -r requirements.txt
@@ -162,59 +154,24 @@ pip install -r requirements.txt
 python app.py
 ```
 
-### 📂 项目结构
+### 🤝 贡献指南
 
-```
-Crawler/
-├── app.py                    # 应用入口
-├── requirements.txt          # Python 依赖
-├── LICENSE                   # GPL v3 许可证
-│
-├── core/                     # 核心业务逻辑层
-│   ├── models.py            # 资源数据模型
-│   ├── parser.py            # HTML 解析引擎
-│   ├── downloader.py        # 下载管理器
-│   └── m3u8_handler.py      # M3U8 流处理器
-│
-├── workers/                  # QThread 工作线程
-│   ├── signals.py           # 信号定义
-│   └── crawler_worker.py    # 主工作线程
-│
-├── ui/                       # PyQt6 界面层
-│   ├── main_window.py       # 主窗口
-│   ├── widgets.py           # 自定义组件
-│   ├── styles.py            # QSS 样式表
-│   └── i18n.py              # 国际化
-│
-└── utils/                    # 工具函数
-    ├── ffmpeg_checker.py    # FFmpeg 检测
-    ├── sanitizer.py         # 文件名清理
-    └── logger.py            # 日志设置
-```
+我们非常欢迎您的贡献！请遵循以下步骤：
 
-### 🛠️ 故障排除
+1.  **Fork 项目**: 创建您自己的代码库副本。
+2.  **创建特性分支**: `git checkout -b feature/AmazingFeature`
+3.  **提交更改**: `git commit -m 'feat: Add some AmazingFeature'` - 请使用规范化提交信息。
+4.  **推送到分支**: `git push origin feature/AmazingFeature`
+5.  **提交 Pull Request**: 详细描述您的更改。
 
-**问题："FFmpeg not found"**
-- 验证：`ffmpeg -version`
-- 安装 FFmpeg 并添加到系统 PATH
+**反馈问题:**
+- 请使用 [Issue Tracker](https://github.com/Xustalis/Crawler/issues)。
+- 请务必包含复现步骤、日志文件和截图。
 
-**问题："403 Forbidden" 错误**
-- 应用自动使用 `fake-useragent` 和 Referer 头
-- 某些网站可能有高级反爬虫措施
+---
 
-### 📝 许可证
+### 📜 License
 
-本项目采用 **GNU 通用公共许可证 v3.0** - 详见 [LICENSE](LICENSE) 文件。
+Distributed under the **GPL v3 License**. See `LICENSE` for more information.
 
-**注意**：GPL v3 与 PyQt6 的 GPL/商业双重许可兼容。
-
-### 👤 作者
-
-**Xustalis**
-- GitHub: [@Xustalis](https://github.com/Xustalis)
-
-### 🙏 致谢
-
-- **PyQt6**：强大的 GUI 框架
-- **BeautifulSoup**：HTML 解析
-- **FFmpeg**：视频处理
+> **Project Aegis** - *Secure, Fast, Intelligent.*

@@ -19,12 +19,13 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
 # Virtual environments
 venv/
 ENV/
 env/
-.venv
+.venv/
 
 # IDE
 .vscode/
@@ -33,9 +34,18 @@ env/
 *.swo
 *~
 
-# Downloads
+# OS Specific
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Application Data
+crawler_data.db
+crawler_data.db-wal
+crawler_data.db-shm
+*.log
+logs/
 downloads/
 output/
 
-# Logs
-*.log
