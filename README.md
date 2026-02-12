@@ -1,176 +1,150 @@
-# 🕷️ Crawler / 爬虫工具
+# 🕷️ Crawler - 工业级高并发爬虫系统
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.10+-yellow.svg)
-![PyQt6](https://img.shields.io/badge/PyQt6-6.6+-green.svg)
-![License](https://img.shields.io/badge/license-GPL%20v3-red.svg)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)
+![Version](https://img.shields.io/badge/version-2.1.1-blue.svg?style=flat-square)
+![Python](https://img.shields.io/badge/python-3.10%2B-yellow.svg?style=flat-square)
+![PyQt6](https://img.shields.io/badge/UI-PyQt6-green.svg?style=flat-square)
+![License](https://img.shields.io/badge/license-GPL%20v3-red.svg?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg?style=flat-square)
 
-[English](#english) | [中文 (Chinese)](#chinese)
+[功能特性](#-核心功能) | [系统架构](#-系统架构) | [快速开始](#-快速开始) | [常见问题](#-快速解决方案--常见问题)
 
 </div>
 
 ---
 
-<a name="english"></a>
-## 📖 Introduction
+## 📖 简介 (Introduction)
 
-**Crawler** is an industrial-grade, desktop-based web resource extraction tool designed for high-performance and stability. It features a modern, cyberpunk-inspired UI, intelligent parsing strategies, and a robust concurrency model suitable for heavy-duty scraping tasks.
+**Crawler** 是一款专为**高稳定性**和**高性能**设计的桌面端网页资源提取工具。它不仅仅是一个简单的下载器，更是一个集成了智能解析、自动化并发控制和健壮错误处理的工业级系统。
 
-### ✨ Key Features
+v2.1 版本引入了 **"Zombie Pool" (僵尸池)** 线程管理机制和 **Data URI** 原生支持，彻底解决了高频操作下的崩溃问题，并实现了对内嵌 Base64 资源的完美提取。
 
-- **🚀 Dynamic Concurrency**: Adaptive worker pool that scales based on queue depth and system load.
-- **🧠 Smart Parsing**: Heuristic-based content extraction for HTML, JSON, and M3U8 streams.
-- **Traffic Optimization**: Intelligent header inspection to skip large binary files during scanning.
-- **💾 M3U8 HLS Support**: Native support for HLS streaming, including segment downloading and FFmpeg merging.
-- **🛡️ Robustness**: Global exception handling, session pooling, and automatic retries with exponential backoff.
-- **🎨 Modern UI**: Responsive PyQt6 interface with bilingual support (EN/ZH).
+## 🌟 核心功能
 
-### 🏗️ Architecture Design
+- **🚀 动态并发引擎**: 内置自适应 `WorkerPool`，根据任务队列深度自动调整线程数量 (1-20)，在速度与系统负载之间取得完美平衡。
+- **🛡️ 工业级稳定性**:
+  - **Zombie Pool 机制**: 彻底根除 "Use-after-free" 崩溃。并在重启任务时，安全地将旧线程池移入后台 ("僵尸状态") 等待其优雅退出。
+  - **信号安全**: 全面的 Defensive Programming 设计，确保在极端 UI 销毁场景下后台线程也能安全着陆。
+- **🧠 智能解析核心**:
+  - **Data URI 支持**: 自动识别并解码 `data:image/...` 等 Base64 资源，无需网络请求直接保存。
+  - **M3U8 流媒体**: 原生支持 HLS 协议，自动下载分片并调用 FFmpeg 合并为 MP4。
+- **🎨 现代化 UI**:
+  - **实时监控**: 状态栏实时显示 CPU 和内存占用，健康状态一目了然。
+  - **网格视图**: 专为图片资源设计的 Grid View，支持懒加载预览。
 
-The application is built on a robust **Event-Driven Component Architecture**, ensuring high scalability and modularity. It orchestrates asynchronous tasks through a central worker pool, decoupling the user interface from intensive background operations.
+## �️ 系统架构
+
+Crawler 采用 **事件驱动 (Event-Driven)** 与 **生产者-消费者 (Producer-Consumer)** 相结合的架构设计，确保 UI 线程永远流畅。
 
 ```mermaid
 graph TD
-    UI["User Interface (PyQt6)"] -->|Signal: Start/Stop| WP["Worker Pool"]
-    WP -->|Spawn| RW["Request Workers (Threads)"]
-    
-    subgraph Core Logic
-        RW -->|Fetch| NET["Network Manager"]
-        RW -->|Parse| PAR["Parser Engine"]
-        PAR -->|Extract| RES["Resources"]
+    %% 样式定义
+    classDef ui fill:#2d2d2d,stroke:#00a0ff,stroke-width:2px,color:white;
+    classDef worker fill:#1e1e1e,stroke:#4ec9b0,stroke-width:2px,color:white;
+    classDef core fill:#333,stroke:#dcdcaa,stroke-width:2px,color:white;
+    classDef db fill:#252526,stroke:#ce9178,stroke-width:2px,color:white;
+
+    subgraph UI_Layer [用户交互层]
+        MW[MainWindow]:::ui
+        Log[LogWidget]:::ui
+        Grid[ResourceGrid]:::ui
     end
-    
-    subgraph Data Persistence
-        RES -->|Store| DB[("SQLite Database")]
-        DB -->|WAL Mode| WAL["Write-Ahead Log"]
+
+    subgraph Manager_Layer [调度管理层]
+        WP[WorkerPool]:::worker
+        Zombie[ZombiePool List]:::worker
+        DL[DownloaderWorker]:::worker
     end
-    
-    subgraph Download System
-        UI -->|Signal: Download| TP["Thread Pool"]
-        TP -->|Execute| DL["Download Runnable"]
-        DL -->|Stream| NET
-        DL -->|Write| FS["File System"]
+
+    subgraph Execution_Layer [执行层]
+        RW[RequestWorker (Runnable)]:::core
+        DR[DownloadRunnable]:::core
+        Parser[PageParser]:::core
+        Net[NetworkManager]:::core
     end
+
+    subgraph Data_Layer [数据持久层]
+        DB[(SQLite Database)]:::db
+        FS[File System]:::db
+    end
+
+    %% 关系连线
+    MW -->|Start/Stop| WP
+    MW -->|Cancel| Zombie
+    MW -->|Batch Download| DL
+    
+    WP -->|Spawn| RW
+    DL -->|Spawn| DR
+    
+    RW -->|Parse URL| Parser
+    Parser -->|Fetch| Net
+    
+    DR -->|Download/Decode| Net
+    DR -->|Write| FS
+    
+    RW -.->|Signals| MW
+    DL -.->|Signals| MW
+    
+    RW -->|Save| DB
+    DR -->|Update Status| DB
 ```
 
-### 🚀 Getting Started
+### 关键流程说明
+1.  **任务调度**: `WorkerPool` 负责分发任务。当用户点击 "停止" 或 "重新开始" 时，旧的 Pool 会被原子性地移入 `ZombiePool List`，确保不会立即销毁导致 C++ 对象悬空 (Dangling Pointer)。
+2.  **数据流转**: 所有解析结果首先存入 SQLite (WAL 模式)，UI 通过信号 (Signals) 异步获取更新，保证界面始终响应。
 
-#### Prerequisites
-- **Python 3.10+**
-- **FFmpeg** (Required for video processing)
-  - Windows: [Download](https://ffmpeg.org/download.html)
-  - Linux: `sudo apt install ffmpeg`
-  - macOS: `brew install ffmpeg`
+## ⚡ 快速开始
 
-#### Installation
+### 环境要求
+- Python 3.10+
+- FFmpeg (用于视频合并，请添加到 PATH)
 
-```bash
-# 1. Clone repository
-git clone https://github.com/Xustalis/Crawler.git
-cd Crawler
+### 安装步骤
 
-# 2. Setup virtual environment
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux/macOS
-source venv/bin/activate
+1.  **克隆代码仓库**
+    ```bash
+    git clone https://github.com/Xustalis/Crawler.git
+    cd Crawler
+    ```
 
-# 3. Install dependencies
-pip install -r requirements.txt
+2.  **安装依赖**
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-# 4. Run application
-python app.py
-```
+3.  **运行应用**
+    ```bash
+    python app.py
+    ```
 
-### 🤝 Contribution Guidelines
+## 🛠️ 快速解决方案 & 常见问题
 
-We welcome contributions! Please follow these steps to ensure a smooth process:
+### Q1: 遇到 `AttributeError` 或 `RuntimeError: wrapped C/C++ object has been deleted` 崩溃?
+**A: 已修复。** 
+这是由于后台线程在 UI 组件销毁后仍尝试发送信号导致的。
+*   **解决方案**: 请更新到 **v2.1.0+**。我们引入了 **Zombie Pool** 机制和信号发射保护 (`try-except RuntimeError`)，即使在极快速度下点击 "开始/停止" 也不会崩溃。
 
-1.  **Fork the Project**: Create your own copy of the repository.
-2.  **Create Feature Branch**: `git checkout -b feature/AmazingFeature`
-3.  **Commit Changes**: `git commit -m 'feat: Add some AmazingFeature'` - please use [Conventional Commits](https://www.conventionalcommits.org/).
-4.  **Push to Branch**: `git push origin feature/AmazingFeature`
-5.  **Open Pull Request**: Describe your changes in detail.
+### Q2: 自带的 "Data URI" 图片下载失败?
+**A: 已修复。**
+旧版本将 `data:image/png;base64,...` 误认为网络 URL 进行 HTTP 请求。
+*   **解决方案**: 新版本会自动识别 `data:` 协议，直接在本地解码 Base64 并保存文件，无需网络连接。
 
-**Reporting Issues:**
-- Please use the [Issue Tracker](https://github.com/Xustalis/Crawler/issues).
-- Include reproduction steps, logs, and screenshots.
+### Q3: 视频下载只有音频或画面?
+**A: 检查 FFmpeg。**
+M3U8 下载完成后需要 FFmpeg 进行合并。
+*   **检查**: 在终端输入 `ffmpeg -version`。如果未找到命令，请安装 FFmpeg 并将其 `bin` 目录添加到系统环境变量 `PATH` 中。
 
----
+## 🤝 贡献 (Contributing)
 
-<a name="chinese"></a>
-## 📖 简介 (Introduction)
+欢迎提交 Issue 和 Pull Request！
 
-**Crawler** 是一款工业级桌面端网页资源提取工具，专为高性能和稳定性而设计。它拥有现代化的赛博朋克风格界面、智能解析策略以及适合高负载抓取任务的健壮并发模型。
+1.  Fork 本仓库
+2.  创建特性分支 (`git checkout -b feature/NewFeature`)
+3.  提交更改 (`git commit -m 'feat: Add NewFeature'`)
+4.  推送到分支 (`git push origin feature/NewFeature`)
+5.  提交 Pull Request
 
-### ✨ 核心特性
+## 📜 许可证
 
-- **🚀 动态并发**: 自适应工作线程池，根据队列深度和系统负载自动伸缩。
-- **🧠 智能解析**: 基于启发式的 HTML、JSON 和 M3U8 流媒体内容提取。
-- **流量优化**: 智能 HTTP 头检查，在扫描阶段自动跳过大型二进制文件，节省带宽。
-- **💾 M3U8 HLS 支持**: 原生支持 HLS 流媒体，包括分片下载和 FFmpeg 自动合并。
-- **🛡️ 健壮性**: 全局异常处理、会话池管理以及带指数退避的自动重试机制。
-- **🎨 现代化 UI**: 响应式 PyQt6 界面，支持中英双语切换。
-
-### 🏗️ 架构设计
-
-本应用采用坚固的**事件驱动组件架构**，确保了高可扩展性和模块化。它通过中心化的工作线程池编排异步任务，实现了用户界面与高负载后台操作的完全解耦。
-
-- **UI 层**: 负责用户交互，通过信号槽机制与业务逻辑解耦。
-- **Core 层**: 包含网络请求、HTML 解析、数据库管理等核心业务逻辑。
-- **Workers 层**: 包含请求工作线程和下载线程池，负责具体任务执行。
-
-### 🚀 快速开始
-
-#### 前置要求
-- **Python 3.10+**
-- **FFmpeg** (视频处理必需)
-  - Windows: [下载](https://ffmpeg.org/download.html)并添加到 PATH
-  - Linux: `sudo apt install ffmpeg`
-  - macOS: `brew install ffmpeg`
-
-#### 安装步骤
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/Xustalis/Crawler.git
-cd Crawler
-
-# 2. 创建虚拟环境
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# Linux/macOS
-source venv/bin/activate
-
-# 3. 安装依赖
-pip install -r requirements.txt
-
-# 4. 运行应用
-python app.py
-```
-
-### 🤝 贡献指南
-
-我们非常欢迎您的贡献！请遵循以下步骤：
-
-1.  **Fork 项目**: 创建您自己的代码库副本。
-2.  **创建特性分支**: `git checkout -b feature/AmazingFeature`
-3.  **提交更改**: `git commit -m 'feat: Add some AmazingFeature'` - 请使用规范化提交信息。
-4.  **推送到分支**: `git push origin feature/AmazingFeature`
-5.  **提交 Pull Request**: 详细描述您的更改。
-
-**反馈问题:**
-- 请使用 [Issue Tracker](https://github.com/Xustalis/Crawler/issues)。
-- 请务必包含复现步骤、日志文件和截图。
-
----
-
-### 📜 License
-
-Distributed under the **GPL v3 License**. See `LICENSE` for more information.
-
+本项目基于 **GPL v3** 许可证开源。
