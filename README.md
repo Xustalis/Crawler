@@ -1,4 +1,4 @@
-# 🕷️ Crawler - 工业级高并发爬虫系统
+# 🕷️ Crawler
 
 <div align="center">
 
@@ -35,7 +35,7 @@ v2.1 版本引入了 **"Zombie Pool" (僵尸池)** 线程管理机制和 **Data 
 
 ## �️ 系统架构
 
-Crawler 采用 **事件驱动 (Event-Driven)** 与 **生产者-消费者 (Producer-Consumer)** 相结合的架构设计，确保 UI 线程永远流畅。
+Crawler 采用 **事件驱动 (Event-Driven)**的架构设计，确保 UI 线程永远流畅。
 
 ```mermaid
 graph TD
@@ -53,20 +53,20 @@ graph TD
 
     subgraph Manager_Layer [调度管理层]
         WP[WorkerPool]:::worker
-        Zombie[ZombiePool List]:::worker
+        Zombie["ZombiePool List"]:::worker
         DL[DownloaderWorker]:::worker
     end
 
     subgraph Execution_Layer [执行层]
-        RW[RequestWorker (Runnable)]:::core
+        RW["RequestWorker (Runnable)"]:::core
         DR[DownloadRunnable]:::core
         Parser[PageParser]:::core
         Net[NetworkManager]:::core
     end
 
     subgraph Data_Layer [数据持久层]
-        DB[(SQLite Database)]:::db
-        FS[File System]:::db
+        DB["SQLite Database"]:::db
+        FS["File System"]:::db
     end
 
     %% 关系连线
