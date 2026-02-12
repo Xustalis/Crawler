@@ -30,7 +30,9 @@ class MainWindow(QMainWindow):
     
     def __init__(self):
         super().__init__()
+
         self.worker_pool: Optional[WorkerPool] = None
+        self.zombie_pools: List[WorkerPool] = [] # Keep dead pools alive until fully stopped
         self.downloader: Optional[DownloaderWorker] = None
         self.scraped_data: Optional[ScrapedData] = None
         self.output_dir = os.path.abspath('./downloads')
@@ -44,8 +46,18 @@ class MainWindow(QMainWindow):
         self._create_menu()
         self._check_environment()
         
+        # System Monitor
+        try:
+            import psutil
+            self.sys_monitor_timer =  __import__('PyQt6.QtCore').QtCore.QTimer(self)
+            self.sys_monitor_timer.timeout.connect(self._update_system_stats)
+            self.sys_monitor_timer.start(2000)
+        except ImportError:
+            logger.warning("psutil not found, system monitoring disabled")
+
         # Initial translation
         self.retranslateUi()
+
     
     def _setup_ui(self) -> None:
         """Initialize UI with Tabs."""
@@ -245,10 +257,18 @@ class MainWindow(QMainWindow):
         self.progress_bar.setTextVisible(False)
         progress_layout.addWidget(self.progress_bar)
         
+
         main_layout.addLayout(progress_layout)
         
+        # System Monitor Label
+        self.monitor_label = QLabel("System: --")
+        self.monitor_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.monitor_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        main_layout.addWidget(self.monitor_label)
+
         # Log
         self.log_group = QGroupBox()
+
         log_layout = QVBoxLayout()
         self.log_widget = LogWidget()
         log_layout.addWidget(self.log_widget)
@@ -373,19 +393,36 @@ class MainWindow(QMainWindow):
         if not url.startswith(('http://', 'https://')):
             url = 'https://' + url
         
+
         self._set_encoding_state(True)
         self.log_widget.clear_log()
         self.log_widget.append_log(t('log_analyzing_url', url))
         
+        # Cleanup existing pool if running (Zombie Strategy)
+        if self.worker_pool:
+            logger.info("Moving active pool to zombie list")
+            old_pool = self.worker_pool
+            self.zombie_pools.append(old_pool)
+            old_pool.signals.finished.disconnect() # Disconnect main UI slots
+            old_pool.signals.results_updated.disconnect()
+            old_pool.signals.progress.disconnect()
+            old_pool.signals.log_message.disconnect()
+            old_pool.signals.error.disconnect()
+            
+            # Connect cleanup slot
+            old_pool.signals.finished.connect(lambda: self._cleanup_zombie(old_pool))
+            old_pool.cancel()
+            self.worker_pool = None
+
         self.worker_pool = WorkerPool(num_workers=self.num_workers, max_depth=2)
-        self.worker_pool.log_message.connect(self.log_widget.append_log)
-        self.worker_pool.pool_progress.connect(self._on_pool_progress)
-        self.worker_pool.pool_finished.connect(self._on_analysis_done)
-        self.worker_pool.error_occurred.connect(self._on_analysis_error)
-        
-        self.worker_pool.error_occurred.connect(self._on_analysis_error)
+        self.worker_pool.signals.log_message.connect(self.log_widget.append_log)
+        self.worker_pool.signals.progress.connect(self._on_pool_progress)
+        self.worker_pool.signals.results_updated.connect(self._on_analysis_partial)
+        self.worker_pool.signals.finished.connect(self._on_analysis_done)
+        self.worker_pool.signals.error.connect(self._on_analysis_error)
         
         self.worker_pool.start_crawl(url, auto_concurrency=self.auto_concurrency_cb.isChecked())
+
         self.status_label.setText(t('status_analyzing'))
     
     def _set_encoding_state(self, is_running: bool):
@@ -394,12 +431,16 @@ class MainWindow(QMainWindow):
         self.url_input.setEnabled(not is_running)
         self.download_btn.setEnabled(not is_running)
         self.concurrency_slider.setEnabled(not is_running)
+        self.category_panel.setEnabled(not is_running)
         self.cancel_btn.setEnabled(is_running)
         if is_running:
             self.progress_bar.setRange(0, 0)
         else:
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(0)
+
+    def _on_analysis_partial(self, data: ScrapedData) -> None:
+        self.category_panel.display_results(data)
 
     def _on_pool_progress(self, completed: int, total: int):
         if total > 0:
@@ -419,6 +460,10 @@ class MainWindow(QMainWindow):
         
         self.category_panel.display_results(data)
         self._update_download_state()
+        try:
+            self.tab_history.load_history()
+        except Exception:
+            logger.exception("Failed to refresh history")
         self.worker_pool = None
     
     def _on_analysis_error(self, error: str) -> None:
@@ -430,70 +475,69 @@ class MainWindow(QMainWindow):
 
     def _start_download(self) -> None:
         """Start batch download with filtered selection."""
-        if not self.scraped_data:
-            return
+        try:
+            if not self.scraped_data:
+                return
         
-        # Get Selection
-        selection_map = self.category_panel.get_selected_map()
+            selection_map = self.category_panel.get_selected_map()
         
-        # Filter ScrapedData
-        filtered_data = ScrapedData()
-        filtered_data.source_url = self.scraped_data.source_url
+            filtered_data = ScrapedData()
+            filtered_data.source_url = self.scraped_data.source_url
         
-        # Helper to filter list by URL set
-        def filter_group(original_list, key):
-             selected_set = selection_map.get(key, set())
-             return [r for r in original_list if r.url in selected_set]
+            def filter_group(original_list, key):
+                 selected_set = selection_map.get(key, set())
+                 return [r for r in original_list if r.url in selected_set]
         
-        filtered_data.images = filter_group(self.scraped_data.images, 'images')
+            filtered_data.images = filter_group(self.scraped_data.images, 'images')
         
-        # Group 'videos' in UI -> videos + m3u8 in data
-        filtered_data.videos = filter_group(self.scraped_data.videos, 'videos')
-        filtered_data.m3u8_streams = filter_group(self.scraped_data.m3u8_streams, 'videos')
+            filtered_data.videos = filter_group(self.scraped_data.videos, 'videos')
+            filtered_data.m3u8_streams = filter_group(self.scraped_data.m3u8_streams, 'videos')
         
-        # Group 'documents' in UI -> documents + audios in data
-        filtered_data.documents = filter_group(self.scraped_data.documents, 'documents')
-        filtered_data.audios = filter_group(self.scraped_data.audios, 'documents')
+            filtered_data.documents = filter_group(self.scraped_data.documents, 'documents')
+            filtered_data.audios = filter_group(self.scraped_data.audios, 'documents')
         
-        # Determine categories to download
-        categories = []
-        count = 0
-        if filtered_data.images: 
-            categories.append(ResourceCategory.IMAGES)
-            count += len(filtered_data.images)
-        if filtered_data.videos: 
-            categories.append(ResourceCategory.VIDEOS)
-            count += len(filtered_data.videos)
-        if filtered_data.m3u8_streams: 
-            categories.append(ResourceCategory.M3U8_STREAMS)
-            count += len(filtered_data.m3u8_streams)
-        if filtered_data.documents: 
-            categories.append(ResourceCategory.DOCUMENTS)
-            count += len(filtered_data.documents)
-        if filtered_data.audios: 
-            categories.append(ResourceCategory.AUDIOS)
-            count += len(filtered_data.audios)
+            categories = []
+            count = 0
+            if filtered_data.images: 
+                categories.append(ResourceCategory.IMAGES)
+                count += len(filtered_data.images)
+            if filtered_data.videos: 
+                categories.append(ResourceCategory.VIDEOS)
+                count += len(filtered_data.videos)
+            if filtered_data.m3u8_streams: 
+                categories.append(ResourceCategory.M3U8_STREAMS)
+                count += len(filtered_data.m3u8_streams)
+            if filtered_data.documents: 
+                categories.append(ResourceCategory.DOCUMENTS)
+                count += len(filtered_data.documents)
+            if filtered_data.audios: 
+                categories.append(ResourceCategory.AUDIOS)
+                count += len(filtered_data.audios)
             
-        if count == 0:
-            QMessageBox.warning(self, t('dialog_selection_error'), t('dialog_select_resources'))
-            return
+            if count == 0:
+                QMessageBox.warning(self, t('dialog_selection_error'), t('dialog_select_resources'))
+                return
             
-        # Update UI state
-        self.download_btn.setEnabled(False)
-        self.analyze_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
-        self.category_panel.setEnabled(False)
-        self.progress_bar.setValue(0)
+            self.download_btn.setEnabled(False)
+            self.analyze_btn.setEnabled(False)
+            self.cancel_btn.setEnabled(True)
+            self.category_panel.setEnabled(False)
+            self.progress_bar.setValue(0)
         
-        self.log_widget.append_log(t('log_starting_download', count))
+            self.log_widget.append_log(t('log_starting_download', count))
         
-        self.downloader = DownloaderWorker(
-            filtered_data, categories, self.output_dir
-        )
-        self.downloader.signals.log.connect(self.log_widget.append_log)
-        self.downloader.signals.overall_progress.connect(self._on_progress)
-        self.downloader.signals.finished.connect(self._on_download_done)
-        self.downloader.start()
+            self.downloader = DownloaderWorker(
+                filtered_data, categories, self.output_dir
+            )
+            self.downloader.signals.log.connect(self.log_widget.append_log)
+            self.downloader.signals.file_log.connect(self.log_widget.append_log)
+            self.downloader.signals.progress.connect(self._on_progress)
+            self.downloader.signals.error.connect(self._on_download_error)
+            self.downloader.signals.finished.connect(self._on_download_done)
+            self.downloader.start()
+        except Exception as e:
+            logger.exception("Start download failed")
+            QMessageBox.warning(self, t('dialog_error'), str(e))
     
     def _on_progress(self, current: int, total: int) -> None:
         if total > 0:
@@ -506,12 +550,30 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setEnabled(False)
         self.category_panel.setEnabled(True)
         self.status_label.setText(t('progress_all_done'))
+        try:
+            self.tab_history.load_history()
+        except Exception:
+            logger.exception("Failed to refresh history")
         
         if success > 0:
             QMessageBox.information(
                 self, t('dialog_success'),
                 t('dialog_downloads_complete', self.output_dir)
             )
+        self.downloader = None
+
+    def _on_download_error(self, error: str) -> None:
+        self.download_btn.setEnabled(True)
+        self.analyze_btn.setEnabled(True)
+        self.cancel_btn.setEnabled(False)
+        self.category_panel.setEnabled(True)
+        self.status_label.setText(t('status_error'))
+        self.log_widget.append_log(f"✗ {error}")
+        QMessageBox.warning(self, t('dialog_error'), error)
+        try:
+            self.tab_history.load_history()
+        except Exception:
+            logger.exception("Failed to refresh history")
         self.downloader = None
     
     def _choose_directory(self) -> None:
@@ -531,12 +593,40 @@ class MainWindow(QMainWindow):
         self.cancel_btn.setEnabled(False)
         self.log_widget.append_log(t('log_cancelling'))
         
+
+    def _cleanup_zombie(self, pool):
+        """Clean up a zombie pool after it finishes."""
+        if pool in self.zombie_pools:
+            self.zombie_pools.remove(pool)
+            logger.info("Zombie pool cleaned up")
+
+    def _update_system_stats(self):
+        """Update system monitor label."""
+        try:
+            import psutil
+            cpu = psutil.cpu_percent()
+            mem = psutil.virtual_memory().percent
+            self.monitor_label.setText(f"CPU: {cpu}% | RAM: {mem}% | Workers: {len(self.zombie_pools) + (1 if self.worker_pool else 0)} pools")
+            
+            if mem > 85:
+                self.monitor_label.setStyleSheet("color: red; font-size: 11px; font-weight: bold;")
+            else:
+                self.monitor_label.setStyleSheet("color: #666; font-size: 11px;")
+        except Exception:
+             pass
+
     def closeEvent(self, event) -> None:
         if self.worker_pool:
-            self.worker_pool.cancel()
+            self.worker_pool.cancel(wait=True)
+        
+        # Cleanup zombies
+        for pool in self.zombie_pools:
+            pool.cancel(wait=False)
+            
         if self.downloader:
             self.downloader.cancel()
         if self.downloader and self.downloader.isRunning():
             self.downloader.quit()
             self.downloader.wait(2000)
         event.accept()
+

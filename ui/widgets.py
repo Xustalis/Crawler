@@ -35,6 +35,22 @@ class ThumbnailLoader(QObject):
         for url in self.urls:
             if not self.running: break
             try:
+                if url.startswith('data:'):
+                    # Handle data URI
+                    try:
+                        header, encoded = url.split(",", 1)
+                        import base64
+                        data = base64.b64decode(encoded)
+                        pixmap = QPixmap()
+                        pixmap.loadFromData(data)
+                        if not pixmap.isNull():
+                            # Scale down
+                            pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                            self.thumbnail_loaded.emit(url, pixmap)
+                    except Exception:
+                        pass
+                    continue
+
                 # Simple fetch
                 response = requests.get(url, timeout=5)
                 if response.status_code == 200:
@@ -44,7 +60,8 @@ class ThumbnailLoader(QObject):
                         # Scale down
                         pixmap = pixmap.scaled(100, 100, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                         self.thumbnail_loaded.emit(url, pixmap)
-            except:
+            except Exception as e:
+                # Silent fail for thumbnails to prevent crash
                 pass
 
 class ThumbnailWorker(QThread):
@@ -186,11 +203,15 @@ class ResourceDetailDialog(QDialog):
 
     def _on_thumbnail_loaded(self, url, pixmap):
         # Find item with this url
-        for i in range(self.list_widget.count()):
-            item = self.list_widget.item(i)
-            if item.data(Qt.ItemDataRole.UserRole) == url:
-                item.setIcon(QIcon(pixmap))
-                break
+        try:
+            for i in range(self.list_widget.count()):
+                item = self.list_widget.item(i)
+                if item and item.data(Qt.ItemDataRole.UserRole) == url:
+                    item.setIcon(QIcon(pixmap))
+                    break
+        except RuntimeError:
+            # Widget might be deleted
+            pass
 
     def _toggle_view(self, checked):
         if checked:
@@ -299,10 +320,10 @@ class ResourceDetailDialog(QDialog):
 
 
     def closeEvent(self, event):
-        if self.thumbnail_thread:
+        if self.thumbnail_thread and self.thumbnail_thread.isRunning():
             self.loader.running = False
             self.thumbnail_thread.quit()
-            self.thumbnail_thread.wait()
+            self.thumbnail_thread.wait(1000) # Wait max 1s
         super().closeEvent(event)
 
 

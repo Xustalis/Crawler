@@ -51,6 +51,7 @@ crawler_data.db-wal
 crawler_data.db-shm
 *.log
 logs/
+crash_logs/
 downloads/
 output/
 

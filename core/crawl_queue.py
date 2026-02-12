@@ -18,7 +18,7 @@ class Priority(IntEnum):
     LOW = 3
 
 
-@dataclass
+@dataclass(order=True)
 class CrawlTask:
     """Represents a single crawl task."""
     url: str

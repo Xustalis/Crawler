@@ -50,8 +50,32 @@ class CrashHandler:
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
 
+        # Prepare crash report
+        timestamp = __import__('datetime').datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        
+        import platform
+        system_info = (
+            f"Platform: {platform.platform()}\n"
+            f"Python: {sys.version}\n"
+            f"Time: {timestamp}\n"
+        )
+        
+        full_report = f"{system_info}\n{'='*40}\nCRASH REPORT\n{'='*40}\n{error_msg}"
+        
+        # Log to console/file via logger
         logger.critical(f"Uncaught exception:\n{error_msg}")
+        
+        # Save to crash log file
+        try:
+            log_dir = Path("crash_logs")
+            log_dir.mkdir(exist_ok=True)
+            log_file = log_dir / f"crash_{timestamp}.txt"
+            with open(log_file, "w", encoding="utf-8") as f:
+                f.write(full_report)
+            logger.info(f"Crash report saved to {log_file}")
+        except Exception as e:
+            logger.error(f"Failed to save crash report: {e}")
         
         # Show error dialog if QApplication is active
         app = QApplication.instance()
@@ -59,8 +83,8 @@ class CrashHandler:
             from PyQt6.QtWidgets import QMessageBox
             msg = QMessageBox()
             msg.setIcon(QMessageBox.Icon.Critical)
-            msg.setText("Application Crashed")
-            msg.setInformativeText("An unexpected error occurred. Logs have been saved.")
+            msg.setText("Application Crashed / 程序崩溃")
+            msg.setInformativeText(f"An unexpected error occurred. / 发生意外错误。\nLog saved to: crash_logs/crash_{timestamp}.txt")
             msg.setDetailedText(error_msg)
             msg.setWindowTitle("Critical Error")
             msg.exec()

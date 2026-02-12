@@ -4,6 +4,7 @@ import datetime
 from typing import List, Optional, Dict, Any
 from pathlib import Path
 import json
+from contextlib import contextmanager
 
 from utils.logger import setup_logger
 
@@ -19,11 +20,17 @@ class DatabaseManager:
         self.db_path = db_path
         self._init_db()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get a database connection with row factory."""
+    @contextmanager
+    def _get_connection(self):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                logger.exception("Failed to close sqlite connection")
 
     def _init_db(self):
         """Initialize database schema and enable WAL."""
@@ -60,6 +67,17 @@ class DatabaseManager:
             with self._get_connection() as conn:
                 # Enable Write-Ahead Logging for concurrency
                 conn.execute("PRAGMA journal_mode=WAL;")
+                
+                # Integrity Check on startup
+                try:
+                    integrity = conn.execute("PRAGMA integrity_check;").fetchone()[0]
+                    if integrity != 'ok':
+                        logger.critical(f"Database integrity check failed: {integrity}")
+                    else:
+                        logger.info("Database integrity check passed")
+                except Exception as e:
+                    logger.error(f"Failed to check DB integrity: {e}")
+
                 conn.execute(create_tasks_table)
                 conn.execute(create_resources_table)
                 conn.commit()

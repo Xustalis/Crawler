@@ -4,3 +4,5 @@ beautifulsoup4>=4.12.0
 fake-useragent>=1.4.0
 m3u8>=3.5.0
 lxml>=4.9.0
+
+psutil>=5.9.0

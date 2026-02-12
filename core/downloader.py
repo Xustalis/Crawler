@@ -48,6 +48,36 @@ class Downloader:
         self.chunk_size = chunk_size
         self.timeout = timeout
     
+    def _check_disk_space(self, path: Path, required_bytes: int) -> bool:
+        """
+        Check if there is enough free space on the disk.
+        
+        Args:
+            path: Path to check (file or directory)
+            required_bytes: Number of bytes required
+            
+        Returns:
+            True if enough space, False otherwise
+        """
+        try:
+            import shutil
+            # Get free space of the drive containing path
+            # If path doesn't exist, use parent
+            check_path = path if path.exists() else path.parent
+            if not check_path.exists():
+                check_path = Path('.')
+                
+            total, used, free = shutil.disk_usage(check_path)
+            
+            # Reserve 50MB buffer
+            if free < (required_bytes + 50 * 1024 * 1024):
+                logger.error(f"Insufficient disk space. Required: {required_bytes}, Free: {free}")
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Failed to check disk space: {e}")
+            return True # Assume space exists if check fails (optimistic)
+
     def download(
         self,
         resource: Resource,
@@ -65,13 +95,15 @@ class Downloader:
         Returns:
             True if download succeeded, False otherwise
         """
+        temp_path = None
         try:
             # Sanitize filename
             safe_name = sanitize_filename(resource.title or 'download')
-            if not safe_name.endswith(resource.file_extension):
+            if resource.file_extension and not safe_name.endswith(resource.file_extension):
                 safe_name += resource.file_extension
             
             output_path = self.output_dir / safe_name
+            temp_path = self.output_dir / f"{safe_name}.tmp"
             
             # Prepare headers
             headers = resource.headers.copy()
@@ -91,10 +123,16 @@ class Downloader:
             
             # Get total size
             total_size = int(response.headers.get('content-length', 0))
+            
+            # Check disk space if size is known
+            if total_size > 0:
+                if not self._check_disk_space(self.output_dir, total_size):
+                    raise IOError("Insufficient disk space")
+            
             downloaded_size = 0
             
-            # Write to file
-            with open(output_path, 'wb') as f:
+            # Write to temp file first
+            with open(temp_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=self.chunk_size):
                     # Check cancellation
                     if is_cancelled and is_cancelled():
@@ -111,19 +149,25 @@ class Downloader:
                             progress = downloaded_size / total_size
                             progress_callback(progress)
             
+            # Rename temp file to final filename on success
+            if output_path.exists():
+                output_path.unlink() # Overwrite existing
+                
+            temp_path.rename(output_path)
+            
             # Mark as completed
             resource.mark_completed(str(output_path))
             logger.info(f"Download completed: {output_path}")
             return True
             
         except requests.RequestException as e:
-            error_msg = f"Download failed: {e}"
+            error_msg = f"Network error: {e}"
             logger.error(error_msg)
             resource.mark_failed(error_msg)
             return False
         
         except IOError as e:
-            error_msg = f"File write error: {e}"
+            error_msg = f"File I/O error: {e}"
             logger.error(error_msg)
             resource.mark_failed(error_msg)
             return False
@@ -133,6 +177,14 @@ class Downloader:
             logger.error(error_msg)
             resource.mark_failed(error_msg)
             return False
+            
+        finally:
+            # Clean up temp file if it still exists (meaning failure or cancel)
+            if temp_path and temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
     
     def get_file_size(self, url: str, headers: dict = None) -> Optional[int]:
         """
